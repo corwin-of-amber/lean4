@@ -253,7 +253,10 @@ extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames, o
                 || strncmp(header.githash, LEAN_GITHASH, sizeof(header.githash)) != 0
 #endif
             ) {
-                return io_result_mk_error((sstream() << "failed to read file '" << olean_fn << "', incompatible header").str());
+                return io_result_mk_error((sstream() << "failed to read file '" << olean_fn 
+                            << "', incompatible header, expected " << int(default_header.version) 
+                            << "(" << int(default_header.flags) << "), got " 
+                            << int(header.version) << "(" << int(header.flags) << ")").str());
             }
             char * base_addr = reinterpret_cast<char *>(header.base_addr);
 #ifdef LEAN_WINDOWS

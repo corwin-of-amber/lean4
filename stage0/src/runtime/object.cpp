@@ -779,6 +779,9 @@ class task_manager {
             m_idle_std_workers++;
             while (true) {
                 if (m_queues_size == 0) {
+#if defined(AMBER)
+                    break;
+#endif
                     if (m_shutting_down) {
                         // We're done
                         break;
@@ -795,11 +798,13 @@ class task_manager {
                 // But during shutdown, we skip this throttling:
                 // because the finalizer might have called m_queue_cv.notify_all() for the last
                 // time, we don't want to get stuck behind the wait().
+#if !defined(AMBER)
                 if (!m_shutting_down &&
                     m_std_workers.size() - m_idle_std_workers >= m_max_std_workers) {
                     m_queue_cv.wait(lock);
                     continue;
                 }
+#endif  
 
                 lean_task_object * t = dequeue();
                 m_idle_std_workers--;
@@ -1039,7 +1044,7 @@ static task_manager * g_task_manager = nullptr;
 
 extern "C" LEAN_EXPORT void lean_init_task_manager_using(unsigned num_workers) {
     lean_assert(g_task_manager == nullptr);
-#if defined(LEAN_MULTI_THREAD)
+#if defined(LEAN_MULTI_THREAD) || defined(AMBER)
     if (num_workers > 0) {
         g_task_manager = new task_manager(num_workers);
     }
@@ -1073,7 +1078,7 @@ extern "C" LEAN_EXPORT void lean_finalize_task_manager() {
 
 scoped_task_manager::scoped_task_manager(unsigned num_workers) {
     lean_assert(g_task_manager == nullptr);
-#if defined(LEAN_MULTI_THREAD)
+#if defined(LEAN_MULTI_THREAD) || defined(AMBER)
     if (num_workers > 0) {
         g_task_manager = new task_manager(num_workers);
     }

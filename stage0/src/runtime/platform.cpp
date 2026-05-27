@@ -64,6 +64,7 @@ extern "C" LEAN_EXPORT uint8 lean_internal_has_address_sanitizer(obj_arg) {
 }
 
 extern "C" LEAN_EXPORT uint8 lean_internal_is_multi_thread(obj_arg) {
+    return 1;
 #ifdef LEAN_MULTI_THREAD
     return 1;
 #else

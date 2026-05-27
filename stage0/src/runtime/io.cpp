@@ -15,7 +15,7 @@ Authors: Leonardo de Moura, Sebastian Ullrich
 #include <mach-o/dyld.h>
 #include <unistd.h>
 #else
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 #include <emscripten.h>
 #endif
 // Linux include files
@@ -959,7 +959,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_getenv(b_obj_arg env_var) {
     if (strlen(env_var_str) != lean_string_size(env_var) - 1) {
         return mk_option_none();
     }
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
     // HACK(WN): getenv doesn't seem to work in Emscripten even though it should
     // see https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-environment-variables
     char* val = reinterpret_cast<char*>(EM_ASM_INT({

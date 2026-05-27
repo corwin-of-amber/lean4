@@ -34,3 +34,10 @@ wdErr.txt
 wdIn.txt
 wdOut.txt
 downstream_releases/
+
+/tmp
+/obj
+/lib
+/bin
+/vir
+.*.swp
