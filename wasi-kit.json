@@ -1,0 +1,14 @@
+{
+    "wasix": true,
+    "*": {
+        "args": ["-fwasm-exceptions", "-mllvm=-wasm-use-legacy-eh=false"]
+    },
+    "bin/lean": {
+        "output": "bin/lean.wasm",
+        "noargs": ["-lgmp", "-luv"],
+        "args": [
+            "--target=wasm32-wasi",
+            "-fwasm-exceptions", "-Wl,--export=__cpp_exception", "-Wl,--export-table",
+            "-Wl,-allow-undefined", "-Wl,-z,stack-size=1048576"]
+    }
+}
