@@ -30,5 +30,3 @@ char const * heartbeat_exception::what() const noexcept {
     return "(deterministic) timeout";
 }
 }
-
-char __wasm_lpad_context[128];

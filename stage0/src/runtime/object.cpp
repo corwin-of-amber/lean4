@@ -779,9 +779,6 @@ class task_manager {
             m_idle_std_workers++;
             while (true) {
                 if (m_queues_size == 0) {
-#if defined(AMBER)
-                    break;
-#endif
                     if (m_shutting_down) {
                         // We're done
                         break;
@@ -798,13 +795,11 @@ class task_manager {
                 // But during shutdown, we skip this throttling:
                 // because the finalizer might have called m_queue_cv.notify_all() for the last
                 // time, we don't want to get stuck behind the wait().
-#if !defined(AMBER)
                 if (!m_shutting_down &&
                     m_std_workers.size() - m_idle_std_workers >= m_max_std_workers) {
                     m_queue_cv.wait(lock);
                     continue;
                 }
-#endif  
 
                 lean_task_object * t = dequeue();
                 m_idle_std_workers--;
@@ -1052,7 +1047,7 @@ extern "C" LEAN_EXPORT void lean_init_task_manager_using(unsigned num_workers) {
 }
 
 static unsigned get_lean_num_threads() {
-#ifndef LEAN_EMSCRIPTEN
+#if !defined(LEAN_EMSCRIPTEN) || defined(AMBER)
     if (char const * num_threads = std::getenv("LEAN_NUM_THREADS")) {
         return atoi(num_threads);
     }
@@ -1062,6 +1057,11 @@ static unsigned get_lean_num_threads() {
 
 /* getHardwareConcurrency (_ : Unit) : UInt32 */
 extern "C" LEAN_EXPORT uint32 lean_internal_get_hardware_concurrency(obj_arg) {
+#if !defined(LEAN_EMSCRIPTEN) || defined(AMBER)
+    if (char const * num_threads = std::getenv("LEAN_NUM_THREADS")) {
+        return atoi(num_threads);
+    }
+#endif
     return hardware_concurrency();
 }
 
