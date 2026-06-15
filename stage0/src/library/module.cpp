@@ -104,7 +104,7 @@ struct olean_header {
 // make sure we don't have any padding bytes, which also ensures `data` is properly aligned
 static_assert(sizeof(olean_header) == 5 + 1 + 1 + 33 + 40 + sizeof(size_t), "olean_header must be packed");
 
-extern "C" LEAN_EXPORT object * lean_save_module_data_parts(b_obj_arg mod, b_obj_arg oparts, object *) {
+extern "C" LEAN_EXPORT object * lean_save_module_data_parts(b_obj_arg mod, b_obj_arg oparts) {
 #ifdef LEAN_WINDOWS
     uint32_t pid = GetCurrentProcessId();
 #else
@@ -206,7 +206,7 @@ struct module_file {
     std::function<void()> m_free_data;
 };
 
-extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames, object *) {
+extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames) {
     array_ref<string_ref> fnames(ofnames, true);
 
     // first read in all headers
@@ -253,9 +253,9 @@ extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames, o
                 || strncmp(header.githash, LEAN_GITHASH, sizeof(header.githash)) != 0
 #endif
             ) {
-                return io_result_mk_error((sstream() << "failed to read file '" << olean_fn 
-                            << "', incompatible header, expected " << int(default_header.version) 
-                            << "(" << int(default_header.flags) << "), got " 
+                return io_result_mk_error((sstream() << "failed to read file '" << olean_fn
+                            << "', incompatible header, expected " << int(default_header.version)
+                            << "(" << int(default_header.flags) << "), got "
                             << int(header.version) << "(" << int(header.flags) << ")").str());
             }
             char * base_addr = reinterpret_cast<char *>(header.base_addr);

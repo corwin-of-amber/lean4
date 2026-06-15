@@ -50,7 +50,7 @@ size_t get_stack_size(bool main) {
         return lthread::get_thread_stack_size();
     }
 }
-#elif defined(LEAN_EMSCRIPTEN)
+#elif defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 size_t get_stack_size(bool main) {
     if (main) {
         return emscripten_stack_get_end() - emscripten_stack_get_base();
