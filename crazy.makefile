@@ -51,6 +51,10 @@ lib/liblean.a: $(OBJ)
 	@mkdir -p $(dir $@)
 	ar r $@ $+
 
+lib/export-symbols.txt: lib/liblean.wa FORCE
+	nm --defined-only -A $< | awk '$$NF ~ /^l_(UInt|String|L)/ { print "-Wl,--export=" $$NF }' > $@
+FORCE:
+.phony: FORCE
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)

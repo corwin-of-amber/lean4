@@ -4,6 +4,7 @@
 #include <map>
 
 #include <uv.h>
+#include <unistd.h>
 #include <sys/stat.h>
 
 
@@ -52,7 +53,7 @@ int uv_fs_stat(uv_loop_t* loop,
                uv_fs_t* req,
                const char* path,
                uv_fs_cb cb) {
-    STUB(<< " " << path);
+    //STUB(<< " " << path);
     struct stat res;
     uv_stat_t& uvres = req->statbuf;
     int rc = stat(path, &res);
@@ -92,7 +93,7 @@ int uv_fs_mkstemp(uv_loop_t* loop,
 int uv_fs_unlink(uv_loop_t* loop,
                  uv_fs_t* req,
                  const char* path,
-                 uv_fs_cb cb) { STUB(); return 0; }
+                 uv_fs_cb cb) { unlink(path); return 0; }
 
 }
 
