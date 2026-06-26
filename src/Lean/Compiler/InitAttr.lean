@@ -44,6 +44,10 @@ Initializers do not have corresponding Lean definitions, so they cannot be inter
 @[extern "lean_run_init"]
 unsafe opaque runInit (env : @& Environment) (opts : @& Options) (decl initDecl : @& Name) : IO Unit
 
+/-- Whether the interpreter can resolve `declName`'s IR body (see `lean_ir_find_env_decl`). -/
+@[extern "lean_ir_has_interp_decl"]
+opaque hasInterpDecl (env : @& Environment) (declName : @& Name) : Bool
+
 /-- Set of modules for which we have already run the module initializer in the interpreter. -/
 builtin_initialize interpretedModInits : IO.Ref NameSet ← IO.mkRef {}
 
@@ -187,6 +191,11 @@ private unsafe def runInitAttrForMod
   let modEntries := modEntries ++ (regularInitAttr.ext.getModuleIREntries env modIdx).filter (!modEntries.contains ·)
   for (decl, initDecl) in modEntries do
     if !initRuntime && getIRPhases env decl == .runtime then
+      continue
+    -- The interpreter needs the init's IR. A module loaded without its IR (e.g. a transitive
+    -- `import all` of a runtime module) carries the `[init]` entry but not the IR body; such an
+    -- init runs at actual runtime instead, so skip it here rather than failing in the interpreter.
+    unless hasInterpDecl env (if initDecl.isAnonymous then decl else initDecl) do
       continue
     if initDecl.isAnonymous then
         -- Don't check `meta` again as it would not respect `Elab.inServer`

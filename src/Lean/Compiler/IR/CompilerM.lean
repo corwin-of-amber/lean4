@@ -153,6 +153,11 @@ private def findInterpDecl (env : Environment) (declName : Name) : Option Decl :
     findAtSorted? (declMapExt.getModuleEntries env modIdx) declName
   | none => declMapExt.getState env |>.find? declName
 
+/-- Whether the interpreter can resolve `declName`'s IR (i.e. `findInterpDecl` succeeds). -/
+@[export lean_ir_has_interp_decl]
+private def hasInterpDecl (env : Environment) (declName : Name) : Bool :=
+  (findInterpDecl env declName).isSome
+
 /-- Like ``findInterpDecl env (declName ++ `_boxed)`` but with optimized negative lookup. -/
 @[export lean_ir_find_env_decl_boxed]
 private def findInterpDeclBoxed (env : Environment) (declName : Name) : Option Decl :=
