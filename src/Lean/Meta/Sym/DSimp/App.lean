@@ -50,12 +50,13 @@ where
     if i = 0 then return .rfl
     let .app f a := e | unreachable!
     let fr ← go argsInfo? (i - 1) f
+    let simpInInstances := (← getConfig).instances
     let skip : Bool :=
       match argsInfo? with
       | some ai =>
         if h : i - 1 < ai.size then
           let { isProof, isInstance } := ai[i - 1]
-          isProof || isInstance
+          isProof || (isInstance && !simpInInstances)
         else
           false  -- over-applied: no info, rewrite
       | none => false
