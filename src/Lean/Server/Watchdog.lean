@@ -15,6 +15,7 @@ public import Lean.Server.Completion.CompletionUtils
 public import Init.Data.List.Sort
 public import Std.Sync.Channel
 public import Lean.Server.Logging
+import all Lean.Elab.ErrorUtils
 
 public section
 
@@ -1678,9 +1679,24 @@ results in requests that need references.
 def startLoadingReferences (referenceData : Std.Mutex ReferenceData) : IO Unit := do
   let task ← ServerTask.IO.asTask do
     let oleanSearchPath ← Lean.searchPathRef.get
+    let mut mileanCount := 0
+    let mut mileanErrors := 0
     for path in ← oleanSearchPath.findAllWithExt "ilean" do
+      let milean : Option Ilean ← try
+          let .some milean ← Milean.load path | pure .none
+          mileanCount := mileanCount + 1
+          pure milean
+        catch _ =>
+          -- milean errors should not be fatal, but we *should* log them
+          -- individually to help debug the global error message we give on error
+          mileanErrors := mileanErrors + 1
+          mileanCount := mileanCount + 1 -- errors mean there *was* a milean but something went wrong
+          pure .none
+
       try
-        let ilean ← Ilean.load path
+        let ilean ← match milean with
+          | .none => Ilean.load path
+          | .some il => pure il
         referenceData.atomically do
           let rd ← get
           let rd ← rd.modifyReferencesM (·.addIlean path ilean)
@@ -1690,6 +1706,8 @@ def startLoadingReferences (referenceData : Std.Mutex ReferenceData) : IO Unit :
         -- ilean load errors should not be fatal, but we *should* log them
         -- when we add logging to the server
         pure ()
+    if mileanErrors > 0 then
+      (← getStderr).putStrLn s!"Attempted to load {mileanCount} .{Milean.ext} {mileanCount.plural "file"}, but failed to load {mileanErrors} of them"
   referenceData.atomically <| modify fun rd =>
     { rd with loadingTask := task.mapCheap fun _ => () }
 

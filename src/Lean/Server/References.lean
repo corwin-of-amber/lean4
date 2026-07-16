@@ -216,6 +216,55 @@ structure Ilean where
   decls         : Lsp.Decls
   deriving FromJson, ToJson
 
+/-- Extra data stored with an `.ilean` loaded and written to disk for mmapping -/
+structure Milean extends Ilean where
+  /-- The `.ilean.hash` value, as computed by Lake.fetchFileHash from the `.ilean` JSON. -/
+  hash : Option UInt64
+
+/--
+Given `<path>.hash`, attempt to read the 64-bit hex value it contains.
+Duplicates, and needs to be kept functionally in sync with, `Lake.Hash.load?`.
+-/
+private def loadHash (hashFile : System.FilePath) : IO UInt64 := do
+  let contents ← FS.readBinFile hashFile
+  if contents.size != 16 then throw (.userError s!"hash file does not have expected form")
+
+  let mut result: UInt64 := 0
+  for byte in contents do
+    result := result.shiftLeft 4
+    if '0'.toUInt8 ≤ byte && byte ≤ '9'.toUInt8 then result := result + (byte - '0'.toUInt8).toUInt64
+    else if 'a'.toUInt8 ≤ byte && byte ≤ 'f'.toUInt8 then result := result + (byte - 'a'.toUInt8 + 10).toUInt64
+    else if 'A'.toUInt8 ≤ byte && byte ≤ 'F'.toUInt8 then result := result + (byte - 'A'.toUInt8 + 10).toUInt64
+    else throw (.userError s!"unexpected byte {byte} in hash")
+  return result
+
+/--
+The extension for a memory-mapped ilean file
+-/
+def Milean.ext := "ilean.mmap"
+
+/--
+Given a path `<path>.ilean`, attempt to read `<path>.ilean.mmap`. Returns `.none` if the file does
+not exist, `.some ilean` if the file hashes match, indicating that `<path>.ilean.mmap` is a
+mmapped version of `<path>.ilean`, throws an error otherwise.
+-/
+def Milean.load (ileanPath : System.FilePath) : IO (Option Ilean) := do
+  if ileanPath.extension ≠ .some "ilean" then throw (.userError s!"Milean.load: '{ileanPath}' not an .ilean")
+  let mileanPath := ileanPath.withExtension Milean.ext
+  if not (← mileanPath.pathExists) then return .none
+
+  let hashPath := ileanPath.addExtension "hash"
+
+  -- nb: ignoring the region means we can't unmap this ilean later
+  let (milean, _region) ← unsafe CompactedRegion.read (α := Milean) mileanPath #[]
+  if let .some memHash := milean.hash then
+    if not (← hashPath.pathExists) then throw (.userError s!"Milean.load: '{mileanPath}' expected '{hashPath}' to exist, but that file does not exist")
+    let fsHash ← loadHash hashPath
+    if memHash ≠ fsHash then throw (.userError s!"Milean.load: '{mileanPath}' expects a .ilean.hash value {String.ofList <| Nat.toDigits 16 memHash.toNat}, but .ilean.hash contains {String.ofList <| Nat.toDigits 16 fsHash.toNat}")
+  else
+    if (← hashPath.pathExists) then throw (.userError s!"Milean.load: '{mileanPath}' expected no '{hashPath}' to exist, but that file does exist")
+  return milean.toIlean
+
 namespace Ilean
 
 open Lean.IO
