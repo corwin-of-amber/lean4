@@ -216,9 +216,9 @@ structure Ilean where
   decls         : Lsp.Decls
   deriving FromJson, ToJson
 
-/-- Extra data stored with an `.ilean` loaded and written to disk for mmapping -/
+/-- Extra metadata data stored with a loaded `.ilean` and written to disk for mmaped load -/
 structure Milean extends Ilean where
-  /-- The `.ilean.hash` value, as computed by Lake.fetchFileHash from the `.ilean` JSON. -/
+  /-- The `.ilean.hash` value for the stored `.ilean`, if it existed when the `Milean` was created. -/
   hash : Option UInt64
 
 /--
