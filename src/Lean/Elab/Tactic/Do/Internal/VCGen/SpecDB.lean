@@ -82,8 +82,7 @@ namespace VCGen
 Extend the `@[spec]` database with the equational lemmas registered through the `mvcgen_simp`
 side of `@[spec]`:
 - simp theorem declarations registered directly as `@[spec]`,
-- unfold entries registered with `attribute [spec] foo`, using stored equation lemmas when
-  available and falling back to `Meta.getEqnsFor?`.
+- `toUnfold` entries, through their unfold theorem `f.eq_def` (`unfoldSpecEqn?`).
 
 Hoare triple and `⊑ wp` specs are already in `database`: the attribute stores them pattern-keyed
 at annotation time.
@@ -105,20 +104,15 @@ public def extendWithSimpSpecs (database : SpecTheorems) (simpThms : SimpTheorem
           specs := Sym.insertPattern specs newSpec.pattern newSpec
       catch e =>
         trace[Elab.Tactic.Do.vcgen] "Failed to add simp spec {declName}: {e.toMessageData}"
-  -- Add definitions to unfold (registered via `attribute [spec] foo`)
+  -- Definitions to unfold rewrite through their unfold theorem `f.eq_def`, the spec-database
+  -- counterpart of `simp`'s delta unfolding; their equations already arrive as simp theorems above.
   for declName in simpThms.toUnfold.toList do
-    let eqThms ← match simpThms.toUnfoldThms.find? declName with
-      | some eqThms => pure eqThms
-      | none =>
-        -- No explicit equational theorems stored; generate them via `getEqnsFor?`
-        let some eqThms ← Meta.getEqnsFor? declName | continue
-        pure eqThms
-    for eqThm in eqThms do
-      try
-        if let some newSpec ← mkSpecTheoremFromSimpDecl? eqThm (prio := eval_prio default) then
+    try
+      if let some eqDef ← unfoldSpecEqn? declName then
+        if let some newSpec ← mkSpecTheoremFromSimpDecl? eqDef (prio := 0) then
           specs := Sym.insertPattern specs newSpec.pattern newSpec
-      catch e =>
-        trace[Elab.Tactic.Do.vcgen] "Failed to add unfold spec {declName}/{eqThm}: {e.toMessageData}"
+    catch e =>
+      trace[Elab.Tactic.Do.vcgen] "Failed to add unfold spec {declName}: {e.toMessageData}"
   return { specs, erased }
 
 end VCGen
