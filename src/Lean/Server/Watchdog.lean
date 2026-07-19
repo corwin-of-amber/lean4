@@ -1681,7 +1681,13 @@ def startLoadingReferences (referenceData : Std.Mutex ReferenceData) : IO Unit :
     let oleanSearchPath ← Lean.searchPathRef.get
     let mut mileanCount := 0
     let mut mileanErrors := 0
+    let mut visitedPaths : Std.HashSet String := {}
     for path in ← oleanSearchPath.findAllWithExt "ilean" do
+      -- Avoid loading an ilean twice
+      let realPathString := (← FS.realPath path).toString
+      if visitedPaths.contains realPathString then continue
+      visitedPaths := visitedPaths.insert realPathString
+
       let milean : Option Ilean ← try
           let .some milean ← Milean.load path | pure .none
           mileanCount := mileanCount + 1
