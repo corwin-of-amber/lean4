@@ -159,7 +159,7 @@ extern "C" LEAN_EXPORT object * lean_save_module_data_parts(b_obj_arg mod, b_obj
             compactor(part.snd().raw());
 
             if (out.fail()) {
-                throw exception((sstream() << "failed to create file '" << olean_fn << "'").str());
+                throw exception((sstream() << "failed to create file '" << olean_fn << "': " << std::strerror(errno)).str());
             }
             out.write(static_cast<char const *>(compactor.data()) + file_offset + sizeof(olean_header), compactor.size() - file_offset - sizeof(olean_header));
             out.close();
@@ -205,6 +205,19 @@ struct module_file {
     char * m_buffer;
     std::function<void()> m_free_data;
 };
+
+/** \brief read exactly `sz` bytes from file (even if a single `read()`
+    call may return fewer) */
+static int read_from_file(int fd, char *buf, size_t sz) {
+    while (sz > 0) {
+        ssize_t rd = read(fd, buf, sz);
+        if (rd <= 0 || rd > sz)
+            return -1;
+        buf += rd;
+        sz -= rd;
+    }
+    return 0;
+}
 
 extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames) {
     array_ref<string_ref> fnames(ofnames, true);
@@ -336,7 +349,7 @@ extern "C" LEAN_EXPORT object * lean_read_module_data_parts(b_obj_arg ofnames) {
             std::string const & olean_fn = file.m_fname;
             try {
                 file.m_buffer = big_buffer + (file.m_base_addr - files[0].m_base_addr);
-                if (read(file.m_fd.get(), file.m_buffer, file.m_size) != static_cast<ssize_t>(file.m_size)) {
+                if (read_from_file(file.m_fd.get(), file.m_buffer, file.m_size) != 0) {
                     return io_result_mk_error((sstream() << "failed to read file '" << olean_fn << "'").str());
                 }
             } catch (exception & ex) {
