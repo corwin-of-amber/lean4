@@ -1586,16 +1586,6 @@ extern "C" LEAN_EXPORT obj_res lean_io_wait_any(b_obj_arg task_list) {
     return v;
 }
 
-#ifdef __wasi__
-extern "C" __attribute__((__import_module__("wasix_32v1"), __import_name__("proc_exit")))
-void proc_exit(int code);
-
-extern "C" LEAN_EXPORT obj_res lean_io_exit(uint8_t code) { proc_exit(code); }
-extern "C" LEAN_EXPORT obj_res lean_io_force_exit(uint8_t code) { proc_exit(code); }
-
-#else
-
-
 extern "C" LEAN_EXPORT obj_res lean_io_exit(uint8_t code) {
     exit(code);
 }
@@ -1603,8 +1593,6 @@ extern "C" LEAN_EXPORT obj_res lean_io_exit(uint8_t code) {
 extern "C" LEAN_EXPORT obj_res lean_io_force_exit(uint8_t code) {
     std::_Exit((int)code);
 }
-
-#endif
 
 extern "C" LEAN_EXPORT obj_res lean_runtime_mark_multi_threaded(obj_arg a) {
     lean_mark_mt(a);
