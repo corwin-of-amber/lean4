@@ -25,6 +25,7 @@ Author: Jared Roesch
 #include <sys/wait.h>
 #include <signal.h>
 #include <limits.h> // NOLINT
+#include <spawn.h>
 #endif
 
 #ifdef __linux
@@ -439,9 +440,11 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
   stdio stderr_mode, option_ref<string_ref> const & cwd, array_ref<pair_ref<string_ref, option_ref<string_ref>>> const & env,
   bool inherit_env, bool do_setsid) {
     /* Setup stdio based on process configuration. */
+    /*
     auto stdin_pipe  = setup_stdio(stdin_mode);
     auto stdout_pipe = setup_stdio(stdout_mode);
     auto stderr_pipe = setup_stdio(stderr_mode);
+    */
 
     // It is crucial to not allocate between `fork` and `execvp` for ASAN to work.
     buffer<char *> pargs;
@@ -450,6 +453,65 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
         pargs.push_back(strdup(arg.data()));
     pargs.push_back(NULL);
 
+    std::cerr << ">";
+    for (auto & arg : pargs)
+        if (arg != NULL)
+            std::cerr << " " << arg;
+    std::cerr << std::endl;
+
+    buffer<char *> penv;
+    for (auto & entry : env) {
+        if (entry.snd()) {
+            auto s = (sstream() << entry.fst().data() << "=" << entry.snd().get()->data()).str();
+            penv.push_back(strdup(s.data()));
+        }
+    }
+    penv.push_back(NULL);
+
+    {
+        int exit_code;
+        int cout_pipe[2];
+        int cerr_pipe[2];
+        posix_spawn_file_actions_t action;
+
+        if(::pipe(cout_pipe) || ::pipe(cerr_pipe)) {
+            std::cerr << "pipe returned an error.\n";
+            exit(-1);
+        }
+
+        posix_spawn_file_actions_init(&action);
+        posix_spawn_file_actions_addclose(&action, cout_pipe[0]);
+        posix_spawn_file_actions_addclose(&action, cerr_pipe[0]);
+        //posix_spawn_file_actions_adddup2(&action, open("/dev/null", O_RDONLY), 0);
+        posix_spawn_file_actions_adddup2(&action, cout_pipe[1], 1);
+        posix_spawn_file_actions_adddup2(&action, cerr_pipe[1], 2);
+
+        posix_spawn_file_actions_addclose(&action, cout_pipe[1]);
+        posix_spawn_file_actions_addclose(&action, cerr_pipe[1]);
+
+        pid_t pid;
+        if (posix_spawn(&pid, pargs[0], &action, NULL, pargs.data(), penv.data()) != 0) {
+            std::cerr << "could not execute external process '" << pargs[0] << "'" << std::endl
+                      << "posix_spawn failed with error: " << strerror(errno) << std::endl;
+            exit(-1);
+        }
+
+        close(cout_pipe[1]), close(cerr_pipe[1]); // close child-side of pipes
+
+        std::cerr << "pid=" << pid << " " << stdin_mode << "," << stdout_mode << "," << stderr_mode << std::endl;
+
+        object * parent_stdin  = box(0);
+        object * parent_stdout = io_wrap_handle(fdopen(cout_pipe[0], "r"));
+        object * parent_stderr = io_wrap_handle(fdopen(cerr_pipe[0], "r"));
+
+        object_ref r = mk_cnstr(0, parent_stdin, parent_stdout, parent_stderr, sizeof(pid_t) + sizeof(uint8_t));
+        static_assert(sizeof(pid_t) == sizeof(uint32), "pid_t is expected to be a 32-bit type"); // NOLINT
+        cnstr_set_uint32(r.raw(), 3 * sizeof(object *), pid);
+        cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
+        return lean_io_result_mk_ok(r.steal());
+    }
+
+#if 0
     int pid = fork();
 
     if (pid == 0) {
@@ -540,6 +602,7 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
     cnstr_set_uint32(r.raw(), 3 * sizeof(object *), pid);
     cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
     return lean_io_result_mk_ok(r.steal());
+#endif
 }
 
 extern "C" LEAN_EXPORT obj_res lean_io_process_child_take_stdin(b_obj_arg, obj_arg lchild) {
