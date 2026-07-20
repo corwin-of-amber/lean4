@@ -56,6 +56,9 @@ functions, which have a (relatively) homogeneous ABI that we can use without run
 #endif
 
 namespace lean {
+
+void initialize_ir_interpreter_thread();
+
 namespace ir {
 // C++ wrappers of Lean data types
 
@@ -374,6 +377,9 @@ struct native_symbol_cache_entry {
 
 // Caches native symbol lookup successes _and_ failures; we assume no native code is loaded or
 // unloaded after the interpreter is first invoked, so this can be a global cache.
+#ifdef __wasi__
+__thread
+#endif
 name_hash_map<native_symbol_cache_entry> * g_native_symbol_cache;
 std::shared_mutex * g_native_symbol_cache_mutex;
 
@@ -825,6 +831,7 @@ private:
 
     /** \brief Return cached lookup result for given unmangled function name in the current binary. */
     symbol_cache_entry lookup_symbol(name const & fn) {
+        initialize_ir_interpreter_thread();
         auto e = m_symbol_cache.find(fn);
         if (e != m_symbol_cache.end()) {
             return e->second;
@@ -1225,6 +1232,15 @@ void initialize_ir_interpreter() {
     });
     ir::g_native_symbol_cache = new name_hash_map<ir::native_symbol_cache_entry>();
     ir::g_native_symbol_cache_mutex = new std::shared_mutex();
+}
+
+void initialize_ir_interpreter_thread() {
+    // In WASI, the function table is thread-local. In this setting, the native
+    //  symbol cache cannot be shared between threads.
+#ifdef __wasi__
+    if (ir::g_native_symbol_cache == nullptr)
+        ir::g_native_symbol_cache = new name_hash_map<ir::native_symbol_cache_entry>();
+#endif
 }
 
 void finalize_ir_interpreter() {
