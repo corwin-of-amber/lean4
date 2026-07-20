@@ -2,6 +2,7 @@ import Std.Tactic.BVDecide
 import Lean.Elab.Tactic.BVDecide
 import Lean.Meta.Tactic.BVDecide
 
+
 namespace Ex1
 
 inductive State where
@@ -64,8 +65,8 @@ example (a : Pair) (h : a.x > 0) : a.s = .s2 := by
 
 /--
 error: The prover found a counterexample, consider the following assignment:
-x = 0#16
 s = State.s1
+x = 0#16
 -/
 #guard_msgs in
 example (x : BitVec 16) (s : State) (h1 : s = .s1 ↔ x = 0) (h : s = .s1) : x > 0 := by

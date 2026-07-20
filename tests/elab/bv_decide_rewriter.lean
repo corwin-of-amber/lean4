@@ -81,7 +81,10 @@ example {x : BitVec 16} : x / (BitVec.twoPow 16 2) = x >>> 2 := by bv_normalize
 example {x : BitVec 16} : x / (BitVec.ofNat 16 8) = x >>> 3 := by bv_normalize
 example {x y : Bool} (h1 : x && y) : x || y := by bv_normalize
 example (a b c: Bool) : (if a then b else c) = (if !a then c else b) := by bv_normalize
-example (x y : BitVec 16) : BitVec.uaddOverflow x y = (x.setWidth (17) + y.setWidth (17)).msb := by bv_normalize
+
+example (x y : BitVec 16) : BitVec.uaddOverflow x y = (x.setWidth (17) + y.setWidth (17)).msb := by
+  bv_normalize
+
 example (x y : BitVec 16) : BitVec.saddOverflow x y = (x.msb = y.msb ∧ ¬(x + y).msb = x.msb) := by bv_normalize
 example (x y : BitVec w) : BitVec.uaddOverflow x y = (x.setWidth (w + 1) + y.setWidth (w + 1)).msb := by bv_normalize
 example (x y : BitVec w) : BitVec.saddOverflow x y = (x.msb = y.msb ∧ ¬(x + y).msb = x.msb) := by bv_normalize
@@ -241,6 +244,16 @@ example (d : Bool) (a b c : BitVec w) :
     ((bif d then a else c) == ~~~(bif d then b else c)) = (bif d then a == ~~~b else c == ~~~c) := by
   bv_normalize
 
+-- bv1 ite with constant branches
+example (t : BitVec 1) : (bif t == 0#1 then 0#1 else 1#1) = t := by bv_normalize
+example (t : BitVec 1) : (bif 0#1 == t then 0#1 else 1#1) = t := by bv_normalize
+example (t : BitVec 1) : (bif t == 1#1 then 1#1 else 0#1) = t := by bv_normalize
+example (t : BitVec 1) : (bif 1#1 == t then 1#1 else 0#1) = t := by bv_normalize
+example (t : BitVec 1) : (bif t == 0#1 then 1#1 else 0#1) = ~~~t := by bv_normalize
+example (t : BitVec 1) : (bif 0#1 == t then 1#1 else 0#1) = ~~~t := by bv_normalize
+example (t : BitVec 1) : (bif t == 1#1 then 0#1 else 1#1) = ~~~t := by bv_normalize
+example (t : BitVec 1) : (bif 1#1 == t then 0#1 else 1#1) = ~~~t := by bv_normalize
+
 -- bv_equal_const_not
 example (a : BitVec 32) : (~~~a = 0#32) ↔ (a = -1) := by
   bv_normalize
@@ -270,8 +283,8 @@ example (a b : BitVec 16) :
   bv_normalize
 
 -- extractLsb'_not_of_lt
-example (a b : BitVec 16) :
-    BitVec.extractLsb' 1 12 (~~~(a &&& b)) = ~~~(BitVec.extractLsb' 1 12 a &&& BitVec.extractLsb' 1 12 b) := by
+example (a : BitVec 16) :
+    BitVec.extractLsb' 1 12 (~~~a) = ~~~(BitVec.extractLsb' 1 12 a) := by
   bv_normalize
 
 -- extractLsb'_if
@@ -691,8 +704,8 @@ section
 namespace NormalizeMul
 /- Test examples of the multiplication normalizer -/
 
-/-- This example does not yet work,
-  since we do not have the full Bitwuzla algorithm. -/
+/-- warning: declaration uses `sorry` -/
+#guard_msgs in
 example {x y z : BitVec 64} : ~~~(x &&& (y * z)) = (~~~x ||| ~~~(z * y)) := by
   sorry
 example (x y : BitVec 256) : x * y = y * x := by
@@ -706,6 +719,8 @@ end NormalizeMul
 
 def foo (x : Bool) : Prop := x = true
 
+/-- warning: declaration uses `sorry` -/
+#guard_msgs in
 example (x : Bool) (h1 h2 : x = true) : foo x := by
   bv_normalize
   have : x = true := by assumption
