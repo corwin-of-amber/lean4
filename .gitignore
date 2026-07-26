@@ -4,8 +4,10 @@
 .lake
 lake-manifest.json
 /build
+/build-wasmer-fs
 /src/lakefile.toml
 /lakefile.toml
+/wasmer-*
 GPATH
 GRTAGS
 GSYMS

@@ -10,12 +10,37 @@ The goal is to make a few adjustments:
 
 Currenly, this sort-of works.
 ```
-make -f crazy.makefile
+make -f crazy.makefile -j12
 
 export LEAN_PATH=$PWD/build/debug/stage1/lib/lean
 echo def a := 90 | ./bin/lean --stdin
 ```
 
-(CHEAT: the above tests using a pre-made Stage 1 build for Init.
+CHEAT: the above tests using a pre-made Stage 1 build for Init.
 It seems that Stage 0 `lake` built this way can also compile Init,
-at least in `.olean` format.)
+at least in `.olean` format.
+
+### Builting Init
+
+```
+make -f crazy.makefile lib-init-fresh
+```
+
+This creates `tmp/init` with the sources of Init and runs `lake build`.
+
+### WebAssembly Port!!
+
+Building `lean.wasm` and `lake.wasm` is simplest using `wasi-kit` (from wasi-kernel).
+```
+rm -rf obj  # clean
+wasi-kit make -f crazy.makefile -j12
+```
+
+If you are interested, the flags that are relevant for the compilation can be
+found in `wasi-kit.json`. In particular:
+ * `-mtail-call` is crucial for compiling `stage0/stdlib/Lean/Language/Lean.c`.
+   This repository contains a patch
+ * `@lib/export-symbols.txt` is needed to expose all the symbols defined in
+   the main executable as WASM exports, to be used by `dlsym`.
+   This requires running `make -f crazy.makefile lib/export-symbols.txt` before
+   the final linking; the main target `bin/lean` takes care of that.

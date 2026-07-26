@@ -1,0 +1,50 @@
+
+name = "lean4"
+bootstrap = true
+
+defaultTargets = ["Init"]
+
+# Have Lake use CMake's build type (e.g., `Release`, `Debug`) where possible
+buildType = "Debug"
+
+# The root of all the compiler output directories
+buildDir = "./build"
+
+# Enables the Lake artifact cache if configured via CMake
+# (i.e., for stage 1 when the CMake `USE_LAKE_CACHE` option is set).
+enableArtifactCache = false
+
+# Ensure build artifacts end up in the build directory even when the Lake
+# local artifact cache is enabled. This is necessary because subsequent stages
+# will expect the previous stage's artifacts to be in the build directory.
+restoreAllArtifacts = true
+
+# Lean expects its libraries to always have a `lib` prefix
+libPrefixOnWindows = true
+
+# The directory of Lean source files (i.e., `src`)
+srcDir = "./src"
+
+# Destination C files and other intermediate representations
+irDir = "lib/temp"
+
+# Destination for olean files
+leanLibDir = "lib/lean"
+
+# Destination for static libraries
+nativeLibDir = "lib/lean"
+
+# Additional options derived from the CMake configuration
+# For example, CI will set `-DwarningAsError=true` through this
+moreLeanArgs = ["-Dbackward.do.legacy=false", "-s40000", "-Dinterpreter.prefer_native=false"]
+
+# Uncomment to limit number of reported errors further in case of overwhelming cmdline output
+#weakLeanArgs = ["-DmaxErrors=1"]
+
+
+supportInterpreter = true
+
+
+[[lean_lib]]
+name = "Init"
+supportInterpreter = true
