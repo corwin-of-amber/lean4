@@ -440,11 +440,9 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
   stdio stderr_mode, option_ref<string_ref> const & cwd, array_ref<pair_ref<string_ref, option_ref<string_ref>>> const & env,
   bool inherit_env, bool do_setsid) {
     /* Setup stdio based on process configuration. */
-    /*
     auto stdin_pipe  = setup_stdio(stdin_mode);
     auto stdout_pipe = setup_stdio(stdout_mode);
     auto stderr_pipe = setup_stdio(stderr_mode);
-    */
 
     // It is crucial to not allocate between `fork` and `execvp` for ASAN to work.
     buffer<char *> pargs;
@@ -470,39 +468,40 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
 
     {
         int exit_code;
-        int cout_pipe[2];
-        int cerr_pipe[2];
         posix_spawn_file_actions_t action;
 
-        if(::pipe(cout_pipe) || ::pipe(cerr_pipe)) {
-            std::cerr << "pipe returned an error.\n";
-            exit(-1);
+        posix_spawn_file_actions_init(&action);
+        if (stdin_pipe) {
+            posix_spawn_file_actions_addclose(&action, stdin_pipe->m_write_fd);
+            posix_spawn_file_actions_adddup2(&action, stdin_pipe->m_read_fd, STDIN_FILENO);
+            posix_spawn_file_actions_addclose(&action, stdin_pipe->m_read_fd);
+        }
+        if (stdout_pipe) {
+            posix_spawn_file_actions_addclose(&action, stdout_pipe->m_read_fd);
+            posix_spawn_file_actions_adddup2(&action, stdout_pipe->m_write_fd, STDOUT_FILENO);
+            posix_spawn_file_actions_addclose(&action, stdout_pipe->m_write_fd);
+        }
+        if (stderr_pipe) {
+            posix_spawn_file_actions_addclose(&action, stderr_pipe->m_read_fd);
+            posix_spawn_file_actions_adddup2(&action, stderr_pipe->m_write_fd, STDERR_FILENO);
+            posix_spawn_file_actions_addclose(&action, stderr_pipe->m_write_fd);
         }
 
-        posix_spawn_file_actions_init(&action);
-        posix_spawn_file_actions_addclose(&action, cout_pipe[0]);
-        posix_spawn_file_actions_addclose(&action, cerr_pipe[0]);
-        //posix_spawn_file_actions_adddup2(&action, open("/dev/null", O_RDONLY), 0);
-        posix_spawn_file_actions_adddup2(&action, cout_pipe[1], 1);
-        posix_spawn_file_actions_adddup2(&action, cerr_pipe[1], 2);
-
-        posix_spawn_file_actions_addclose(&action, cout_pipe[1]);
-        posix_spawn_file_actions_addclose(&action, cerr_pipe[1]);
-
         pid_t pid;
-        if (posix_spawn(&pid, pargs[0], &action, NULL, pargs.data(), penv.data()) != 0) {
+        if (posix_spawnp(&pid, pargs[0], &action, NULL, pargs.data(), penv.data()) != 0) {
             std::cerr << "could not execute external process '" << pargs[0] << "'" << std::endl
                       << "posix_spawn failed with error: " << strerror(errno) << std::endl;
             exit(-1);
         }
 
-        close(cout_pipe[1]), close(cerr_pipe[1]); // close child-side of pipes
+        // close child-side of pipes
+        close(stdin_pipe->m_read_fd); close(stdout_pipe->m_write_fd), close(stderr_pipe->m_write_fd);
 
         std::cerr << "pid=" << pid << " " << stdin_mode << "," << stdout_mode << "," << stderr_mode << std::endl;
 
-        object * parent_stdin  = box(0);
-        object * parent_stdout = io_wrap_handle(fdopen(cout_pipe[0], "r"));
-        object * parent_stderr = io_wrap_handle(fdopen(cerr_pipe[0], "r"));
+        object * parent_stdin  = stdin_pipe  ? io_wrap_handle(fdopen(stdin_pipe->m_write_fd, "w")) : box(0);
+        object * parent_stdout = stdout_pipe ? io_wrap_handle(fdopen(stdout_pipe->m_read_fd, "r")) : box(0);
+        object * parent_stderr = stderr_pipe ? io_wrap_handle(fdopen(stderr_pipe->m_read_fd, "r")) : box(0);
 
         object_ref r = mk_cnstr(0, parent_stdin, parent_stdout, parent_stderr, sizeof(pid_t) + sizeof(uint8_t));
         static_assert(sizeof(pid_t) == sizeof(uint32), "pid_t is expected to be a 32-bit type"); // NOLINT
