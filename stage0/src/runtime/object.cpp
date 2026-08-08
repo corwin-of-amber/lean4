@@ -70,6 +70,13 @@ __attribute__((weak)) void free_sized(void *ptr, size_t) {
 #define LEAN_MAX_PRIO 8
 #define LEAN_SYNC_PRIO std::numeric_limits<unsigned>::max()
 
+// This is for debugging the worker threads (it is hard!)
+#if defined(LEAN_TRACE_TASKMGR)
+# define TRACE(X) std::cerr << X << std::endl
+#else
+# define TRACE(X)
+#endif
+
 namespace lean {
 
 static bool should_abort_on_panic() {
@@ -769,11 +776,17 @@ class task_manager {
         lock.lock();
     }
 
-    void spawn_worker() {
+    void spawn_worker(bool dedicated = false) {
         if (m_shutting_down)
             return;
 
-        m_std_workers.emplace_back(new lthread([this]() {
+        TRACE("[task_manager] starting worker "
+            << m_std_workers.size() << (dedicated ? " (dedicated)" : ""));
+
+        if (dedicated) m_num_dedicated_workers++;
+
+        m_std_workers.emplace_back(new lthread([this, dedicated]() {
+            TRACE("[task_manager] m_queues_size=" << m_queues_size);
             save_stack_info(false);
             unique_lock<mutex> lock(m_mutex);
             m_idle_std_workers++;
@@ -795,23 +808,34 @@ class task_manager {
                 // But during shutdown, we skip this throttling:
                 // because the finalizer might have called m_queue_cv.notify_all() for the last
                 // time, we don't want to get stuck behind the wait().
-                if (!m_shutting_down &&
-                    m_std_workers.size() - m_idle_std_workers >= m_max_std_workers) {
+                if (!m_shutting_down && !dedicated && worker_throttle()) {
                     m_queue_cv.wait(lock);
                     continue;
                 }
 
                 lean_task_object * t = dequeue();
+                TRACE("[task_manager] running task " << t);
                 m_idle_std_workers--;
                 run_task(lock, t);
                 m_idle_std_workers++;
                 reset_heartbeat();
             }
             m_idle_std_workers--;
+            if (dedicated) m_num_dedicated_workers--;
         }));
     }
 
     void spawn_dedicated_worker(lean_task_object * t) {
+#ifdef LEAN_MULTI_THREAD_FRUGAL
+        m_max_prio = LEAN_MAX_PRIO;
+        m_queues[LEAN_MAX_PRIO].push_back(t);
+        m_queues_size++;
+        if (m_idle_std_workers == 0)
+            spawn_worker(true);
+        else
+            m_queue_cv.notify_one();
+#else
+        TRACE("[task_manager] starting dedicated worker for task " << t);
         m_num_dedicated_workers++;
         lthread([this, t]() {
             save_stack_info(false);
@@ -821,6 +845,16 @@ class task_manager {
             m_dedicated_finished_cv.notify_all();
         });
         // `lthread` will be implicitly freed, which frees up its control resources but does not terminate the thread
+#endif
+    }
+
+    inline bool worker_throttle() {
+#ifdef LEAN_MULTI_THREAD_FRUGAL
+        int surplus = m_num_dedicated_workers;
+#else
+        int surplus = 0;
+#endif
+        return m_std_workers.size() - m_idle_std_workers >= m_max_std_workers + surplus;
     }
 
     void run_task(unique_lock<mutex> & lock, lean_task_object * t) {
@@ -915,15 +949,19 @@ public:
             m_shutting_down = true;
             // we can assume that `m_std_workers` will not be changed after this line
         }
+        TRACE("[task_manager] shutting down (" << m_std_workers.size() << " shared, " << m_num_dedicated_workers << " dedicated)");
         m_queue_cv.notify_all();
-#ifndef LEAN_EMSCRIPTEN
+#if !defined(LEAN_EMSCRIPTEN) || defined(AMBER)
         // wait for all workers to finish
         for (auto & t : m_std_workers)
             t->join();
 
+        TRACE("[task_manager] shutting down (" << m_num_dedicated_workers << " dedicated)");
+
         unique_lock<mutex> lock(m_mutex);
         m_dedicated_finished_cv.wait(lock, [&]() { return m_num_dedicated_workers == 0; });
-        // never seems to terminate under Emscripten
+        // (never seems to terminate under Emscripten)
+        TRACE("[task_manager] terminated.");
 #endif
     }
 
