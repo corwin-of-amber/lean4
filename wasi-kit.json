@@ -23,7 +23,7 @@
     "bin/lean": {
         "output": "bin/lean.wasm",
         "preset": "exe",
-        "args": [["..."], "@lib/export-symbols.txt"]
+        "args": [["..."], "@crazy/export-symbols.txt"]
     },
     "bin/lake": {
         "output": "bin/lake.wasm",
