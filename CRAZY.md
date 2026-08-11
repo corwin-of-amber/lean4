@@ -32,7 +32,7 @@ This creates `tmp/init` with the sources of Init and runs `lake build`.
 
 Building `lean.wasm` and `lake.wasm` is simplest using `wasi-kit` (from wasi-kernel).
 ```
-rm -rf obj  # clean
+rm -rf obj  # clean native build files
 wasi-kit make -f crazy.makefile -j12
 ```
 
@@ -40,7 +40,11 @@ If you are interested, the flags that are relevant for the compilation can be
 found in `wasi-kit.json`. In particular:
  * `-mtail-call` is crucial for compiling `stage0/stdlib/Lean/Language/Lean.c`.
    This repository contains a patch
- * `@lib/export-symbols.txt` is needed to expose all the symbols defined in
-   the main executable as WASM exports, to be used by `dlsym`.
+ * `@crazy/export-symbols.txt` is needed to expose a minimal set of native
+   symbols defined in the main executable as WASM exports, which the
+   interpreter requires be present at runtime.
+ * `@lib/export-symbols.txt` can be used instead to expose all the symbols defined
+   in the main executable, mainly for testing purposes. This creates a much larger
+   file and increases loading times due to the size of the export table.
    This requires running `make -f crazy.makefile lib/export-symbols.txt` before
    the final linking; the main target `bin/lean` takes care of that.

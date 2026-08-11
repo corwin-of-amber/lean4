@@ -1,28 +1,43 @@
-ALLCPP := ${shell find stage0/src -name "*.cpp"} crazy/stubs.cpp
+#
+# This makefile can be used to compile either Stage 0 or Stage 1.
+# Building Stage 1 depends on having a bootstrapped build directory
+# (`build/release/stage1`).
+#
+ifeq ($(STAGE),0)
+ALLCPP := ${shell find stage0/src -name "*.cpp"}
 ALLC := ${shell find stage0/stdlib -name "*.c"}
-#ALLC := ${shell find tmp/stage0/stdlib -name "*.c"}
+SRC_LEAN_CPP = stage0/src/shell/lean.cpp
+SRC_LAKE_C = stage0/stdlib/LakeMain.c
+INC = -Istage0/src{,/include}
+else
+STAGE := 1
+ALLCPP := ${shell find src -name "*.cpp"}
+ALLC := ${shell find build/release/stage1/lib/temp -name "*.c"}
+SRC_LEAN_CPP = src/shell/lean.cpp
+SRC_LAKE_C = build/release/stage1/lib/temp/LakeMain.c
+INC = -Isrc{,/include}
+endif
 
 MAINS = LeanIR.c LeanChecker.c LakeMain.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
 OBJ_DIR = obj
 
-SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)}
+SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)} crazy/stubs.cpp
 SRC_C = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLC)}
-
-SRC_LEAN_CPP = stage0/src/shell/lean.cpp
-SRC_LAKE_C = stage0/stdlib/LakeMain.c
 
 OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
 
 MODIFIERS = -DLEAN_MULTI_THREAD -DLEAN_MULTI_THREAD_FRUGAL
 MODIFIERS += -DLEAN_EMSCRIPTEN
-MODIFIERS += -DAMBER
+MODIFIERS += -DAMBER -DLEAN_USE_POSIX_SPAWN
+ifeq ($(STAGE),0)
 MODIFIERS += -DLEAN_IS_STAGE0
+endif
 
 #MODIFIERS += -DLEAN_USE_GMP
 
-CFLAGS = $(MODIFIERS) -Icrazy/include -Istage0/src{,/include}
+CFLAGS = $(MODIFIERS) -Icrazy/include $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
 
 # dbg
