@@ -20,7 +20,7 @@ Author: Leonardo de Moura
     #include <sys/resource.h> // NOLINT
 #endif
 
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 #include <emscripten/stack.h>
 #endif
 
@@ -50,7 +50,7 @@ size_t get_stack_size(bool main) {
         return lthread::get_thread_stack_size();
     }
 }
-#elif defined(LEAN_EMSCRIPTEN)
+#elif defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 size_t get_stack_size(bool main) {
     if (main) {
         return emscripten_stack_get_end() - emscripten_stack_get_base();
@@ -129,8 +129,10 @@ void check_stack(char const * component_name) {
     if (!g_stack_info_init)
         save_stack_info(false);
     size_t curr_stack = reinterpret_cast<size_t>(get_stack_pointer());
+#if !defined(AMBER)
     if (curr_stack < g_stack_threshold)
         throw_stack_space_exception(component_name);
+#endif
 }
 }
 #endif

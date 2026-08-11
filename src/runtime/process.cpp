@@ -25,6 +25,7 @@ Author: Jared Roesch
 #include <sys/wait.h>
 #include <signal.h>
 #include <limits.h> // NOLINT
+#include <spawn.h>
 #endif
 
 #ifdef __linux
@@ -450,6 +451,59 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
         pargs.push_back(strdup(arg.data()));
     pargs.push_back(NULL);
 
+#ifdef LEAN_USE_POSIX_SPAWN
+    buffer<char *> penv;
+    for (auto & entry : env) {
+        if (entry.snd()) {
+            auto s = (sstream() << entry.fst().data() << "=" << entry.snd().get()->data()).str();
+            penv.push_back(strdup(s.data()));
+        }
+    }
+    penv.push_back(NULL);
+
+    int exit_code;
+    posix_spawn_file_actions_t action;
+
+    posix_spawn_file_actions_init(&action);
+    if (stdin_pipe) {
+        posix_spawn_file_actions_addclose(&action, stdin_pipe->m_write_fd);
+        posix_spawn_file_actions_adddup2(&action, stdin_pipe->m_read_fd, STDIN_FILENO);
+        posix_spawn_file_actions_addclose(&action, stdin_pipe->m_read_fd);
+    }
+    if (stdout_pipe) {
+        posix_spawn_file_actions_addclose(&action, stdout_pipe->m_read_fd);
+        posix_spawn_file_actions_adddup2(&action, stdout_pipe->m_write_fd, STDOUT_FILENO);
+        posix_spawn_file_actions_addclose(&action, stdout_pipe->m_write_fd);
+    }
+    if (stderr_pipe) {
+        posix_spawn_file_actions_addclose(&action, stderr_pipe->m_read_fd);
+        posix_spawn_file_actions_adddup2(&action, stderr_pipe->m_write_fd, STDERR_FILENO);
+        posix_spawn_file_actions_addclose(&action, stderr_pipe->m_write_fd);
+    }
+
+    pid_t pid;
+    if (posix_spawnp(&pid, pargs[0], &action, NULL, pargs.data(), penv.data()) != 0) {
+        std::cerr << "could not execute external process '" << pargs[0] << "'" << std::endl
+                  << "posix_spawn failed with error: " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+
+    // close child-side of pipes
+    close(stdin_pipe->m_read_fd); close(stdout_pipe->m_write_fd), close(stderr_pipe->m_write_fd);
+
+    //std::cerr << "pid=" << pid << " " << stdin_mode << "," << stdout_mode << "," << stderr_mode << std::endl;
+
+    object * parent_stdin  = stdin_pipe  ? io_wrap_handle(fdopen(stdin_pipe->m_write_fd, "w")) : box(0);
+    object * parent_stdout = stdout_pipe ? io_wrap_handle(fdopen(stdout_pipe->m_read_fd, "r")) : box(0);
+    object * parent_stderr = stderr_pipe ? io_wrap_handle(fdopen(stderr_pipe->m_read_fd, "r")) : box(0);
+
+    object_ref r = mk_cnstr(0, parent_stdin, parent_stdout, parent_stderr, sizeof(pid_t) + sizeof(uint8_t));
+    static_assert(sizeof(pid_t) == sizeof(uint32), "pid_t is expected to be a 32-bit type"); // NOLINT
+    cnstr_set_uint32(r.raw(), 3 * sizeof(object *), pid);
+    cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
+    return lean_io_result_mk_ok(r.steal());
+
+#else
     int pid = fork();
 
     if (pid == 0) {
@@ -540,6 +594,7 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
     cnstr_set_uint32(r.raw(), 3 * sizeof(object *), pid);
     cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
     return lean_io_result_mk_ok(r.steal());
+#endif
 }
 
 extern "C" LEAN_EXPORT obj_res lean_io_process_child_take_stdin(b_obj_arg, obj_arg lchild) {
