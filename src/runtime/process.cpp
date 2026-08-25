@@ -461,7 +461,6 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
     }
     penv.push_back(NULL);
 
-    int exit_code;
     posix_spawn_file_actions_t action;
 
     posix_spawn_file_actions_init(&action);
@@ -489,7 +488,9 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
     }
 
     // close child-side of pipes
-    close(stdin_pipe->m_read_fd); close(stdout_pipe->m_write_fd), close(stderr_pipe->m_write_fd);
+    if (stdin_pipe) close(stdin_pipe->m_read_fd);
+    if (stdout_pipe) close(stdout_pipe->m_write_fd);
+    if (stderr_pipe) close(stderr_pipe->m_write_fd);
 
     //std::cerr << "pid=" << pid << " " << stdin_mode << "," << stdout_mode << "," << stderr_mode << std::endl;
 
