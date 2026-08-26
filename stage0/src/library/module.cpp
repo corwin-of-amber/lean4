@@ -211,7 +211,7 @@ struct module_file {
 static int read_from_file(int fd, char *buf, size_t sz) {
     while (sz > 0) {
         ssize_t rd = read(fd, buf, sz);
-        if (rd <= 0 || rd > sz)
+        if (rd <= 0 || (size_t)rd > sz)
             return -1;
         buf += rd;
         sz -= rd;

@@ -932,6 +932,9 @@ private:
         // `Unreachable` can be from `mkDummyExternDecl`, which may mean that we failed to run the
         // initializer, suggesting some incorrect `meta` phase setup. Let's make sure we give a
         // better signal than a segfault in that case.
+        if (fn_body_tag(decl_fun_body(e.m_decl)) == fn_body_kind::Unreachable) {
+            std::cerr << "[fatal] init stub for '" << fn << "'" << std::endl;
+        }
         lean_always_assert(fn_body_tag(decl_fun_body(e.m_decl)) != fn_body_kind::Unreachable);
         value r = eval_body(decl_fun_body(e.m_decl));
         pop_frame(r, decl_type(e.m_decl));
@@ -971,6 +974,7 @@ private:
             if (decl_tag(e.m_decl) == decl_kind::Extern) {
                 string_ref mangled = get_symbol_stem(m_env, fn);
                 string_ref boxed_mangled = mk_mangled_boxed_name(mangled);
+                std::cerr << "[fatal] missing " << boxed_mangled.data() << std::endl;
                 throw exception(sstream() << "Could not find native implementation of external declaration '" << fn
                                           << "' (symbols '" << boxed_mangled.data() << "' or '" << mangled.data() << "').\n"
                                           << "For declarations from `Init`, `Std`, or `Lean`, you need to set `supportInterpreter := true` "

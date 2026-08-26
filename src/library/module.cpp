@@ -212,7 +212,7 @@ static int read_from_file(int fd, void *buf, size_t sz) {
     uint8_t *obuf = (uint8_t*)buf;
     while (sz > 0) {
         ssize_t rd = read(fd, obuf, sz);
-        if (rd <= 0 || rd > sz)
+        if (rd <= 0 || (size_t)rd > sz)
             return -1;
         obuf += rd;
         sz -= rd;

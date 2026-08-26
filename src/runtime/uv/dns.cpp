@@ -33,7 +33,7 @@ bool is_safe_ascii_str(const char *s, size_t len) {
 }
 
 // Std.Internal.IO.Async.DNS.getAddrInfo (host service : @& String) (family : UInt8) : IO (IO.Promise (Except IO.Error (Array IPAddr)))
-extern "C" LEAN_EXPORT lean_obj_res lean_uv_dns_get_info(b_obj_arg name, b_obj_arg service, uint8_t family, uint8_t protocl) {
+extern "C" LEAN_EXPORT lean_obj_res lean_uv_dns_get_info(b_obj_arg name, b_obj_arg service, uint8_t family) {
     char const * name_cstr = lean_string_cstr(name);
     char const * service_cstr = lean_string_cstr(service);
 
