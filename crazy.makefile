@@ -67,8 +67,10 @@ lib/liblean.a: $(OBJ)
 	@mkdir -p $(dir $@)
 	ar r $@ $+
 
-lib/export-symbols.txt: lib/liblean.wa
-	nm --defined-only -A $< | awk '$$NF ~ /^(runtime|meta)_initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
+lib/export-symbols.txt:
+	npx tsx crazy/extract-native-exports.ts > $@
+lib/export-symbols-all.txt: lib/liblean.wa
+	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
 lib/liblean.wa:
 
 $(OBJ_DIR)/%.o: %.cpp
@@ -85,11 +87,9 @@ wasm-opt:
 build-wasmer-fs:
 	rm -rf $@
 	mkdir -p $@/home/init/src $@/usr/bin $@/dev
-	cp crazy/init/lakefile.toml    $@/home/init
-	cp -r src/Init.lean src/Init   $@/home/init/src
+	cp bin/lean.wasm              $@/usr/bin/lean
+	cp crazy/init/lakefile.toml   $@/home/init
 	dd if=/dev/urandom of=$@/dev/urandom bs=1K count=1
-
-.PHONY: build-wasmer-fs
 
 lib-init:
 	rm -rf tmp/init/build
@@ -102,12 +102,36 @@ lib-init-fresh:
 	$(make-rec) lib-init
 
 lib-init-wasm: build-wasmer-fs
-	node crazy/replay-lake-trace.js
+	cp -r src/Init.lean src/Init build-wasmer-fs/home/init/src
+	wasmer run --cwd /home/init --stack-size=4000000 \
+	  --volume build-wasmer-fs/home:/home \
+	  --volume build-wasmer-fs/usr:/usr \
+	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build
 	@$(make-rec) lib-init-wasm-tar
+
+lib-std-wasm: build-wasmer-fs
+	cp -r src/Std.lean src/Std build-wasmer-fs/home/init/src
+	wasmer run --cwd /home/init --stack-size=4000000 \
+	  --volume build-wasmer-fs/home:/home \
+	  --volume build-wasmer-fs/usr:/usr \
+	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Std
+
+lib-lean-wasm: build-wasmer-fs
+	cp -r src/Lean.lean src/Lean build-wasmer-fs/home/init/src
+	wasmer run --cwd /home/init --stack-size=4000000 \
+	  --volume build-wasmer-fs/home:/home \
+	  --volume build-wasmer-fs/usr:/usr \
+	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Lean
 
 lib-init-wasm-tar:
 	mkdir -p lib
 	( cd build-wasmer-fs/home/init/build/lib/lean && \
-	  tar cf ${PWD}/lib/Init32.tar `find * -name '*.olean' -o -name '*.ir' -o -name '*.ilean' -o -name '*.olean.*'` )
+	  tar cf ${PWD}/lib/Init32.tar *.olean `find Init -name '*.olean' -o -name '*.ir'` )
+# -o -name '*.ilean' -o -name '*.olean.*'` )
+
+lib-std-wasm-tar:
+	mkdir -p lib
+	( cd build-wasmer-fs/home/init/build/lib/lean && \
+	  tar cf ${PWD}/lib/Std32.tar `find Std -name '*.olean' -o -name '*.ir'` )
 
 .PHONY: lib-init lib-init-%
