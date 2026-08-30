@@ -18,7 +18,7 @@ SRC_LAKE_C = build/release/stage1/lib/temp/LakeMain.c
 INC = -Isrc{,/include}
 endif
 
-MAINS = LeanIR.c LeanChecker.c LakeMain.c shell/lean.cpp
+MAINS = LeanIR.c LeanChecker.c LakeMain.c Leanc.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
 OBJ_DIR = obj
@@ -122,6 +122,25 @@ lib-lean-wasm: build-wasmer-fs
 	  --volume build-wasmer-fs/home:/home \
 	  --volume build-wasmer-fs/usr:/usr \
 	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Lean
+
+lib-lake-wasm: build-wasmer-fs
+	cp -r src/lake/Lake.lean src/lake/Lake build-wasmer-fs/home/init/src
+	wasmer run --cwd /home/init --stack-size=4000000 \
+	  --volume build-wasmer-fs/home:/home \
+	  --volume build-wasmer-fs/usr:/usr \
+	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Lake
+
+lib-wasm-tar:
+	mkdir -p lib
+	( cd build-wasmer-fs/home/init/build/lib/lean && \
+	  tar cf ${PWD}/lib/Lib32.tar *.olean *.ir \
+	    `find Init Std Lean Lake -name '*.olean' -o -name '*.ir'` )
+
+lib-wasm-tar-huge:
+	mkdir -p lib
+	( cd build-wasmer-fs/home/init/build/lib/lean && \
+	  tar cf ${PWD}/lib/Lib32.tar *.olean* *.ir \
+	    `find Init Std Lean Lake -name '*.olean*' -o -name '*.ir'` )
 
 lib-init-wasm-tar:
 	mkdir -p lib

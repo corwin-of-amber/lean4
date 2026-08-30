@@ -47,6 +47,8 @@ extern "C" {
 
 #define STUB(X) std::cerr << "[stub] " << __func__ X << std::endl
 
+int flock(int fd, int operation) { STUB(); return 0; }
+
 const char* uv_strerror(int err) { return strerror(err); }
 
 int uv_fs_stat(uv_loop_t* loop,
