@@ -56,6 +56,9 @@ functions, which have a (relatively) homogeneous ABI that we can use without run
 #endif
 
 namespace lean {
+
+void initialize_ir_interpreter_thread();
+
 namespace ir {
 // C++ wrappers of Lean data types
 
@@ -374,6 +377,9 @@ struct native_symbol_cache_entry {
 
 // Caches native symbol lookup successes _and_ failures; we assume no native code is loaded or
 // unloaded after the interpreter is first invoked, so this can be a global cache.
+#ifdef __wasi__
+__thread
+#endif
 name_hash_map<native_symbol_cache_entry> * g_native_symbol_cache;
 std::shared_mutex * g_native_symbol_cache_mutex;
 
@@ -825,6 +831,7 @@ private:
 
     /** \brief Return cached lookup result for given unmangled function name in the current binary. */
     symbol_cache_entry lookup_symbol(name const & fn) {
+        initialize_ir_interpreter_thread();
         auto e = m_symbol_cache.find(fn);
         if (e != m_symbol_cache.end()) {
             return e->second;
@@ -925,6 +932,9 @@ private:
         // `Unreachable` can be from `mkDummyExternDecl`, which may mean that we failed to run the
         // initializer, suggesting some incorrect `meta` phase setup. Let's make sure we give a
         // better signal than a segfault in that case.
+        if (fn_body_tag(decl_fun_body(e.m_decl)) == fn_body_kind::Unreachable) {
+            std::cerr << "[fatal] init stub for '" << fn << "'" << std::endl;
+        }
         lean_always_assert(fn_body_tag(decl_fun_body(e.m_decl)) != fn_body_kind::Unreachable);
         value r = eval_body(decl_fun_body(e.m_decl));
         pop_frame(r, decl_type(e.m_decl));
@@ -964,6 +974,7 @@ private:
             if (decl_tag(e.m_decl) == decl_kind::Extern) {
                 string_ref mangled = get_symbol_stem(m_env, fn);
                 string_ref boxed_mangled = mk_mangled_boxed_name(mangled);
+                std::cerr << "[fatal] missing " << boxed_mangled.data() << std::endl;
                 throw exception(sstream() << "Could not find native implementation of external declaration '" << fn
                                           << "' (symbols '" << boxed_mangled.data() << "' or '" << mangled.data() << "').\n"
                                           << "For declarations from `Init`, `Std`, or `Lean`, you need to set `supportInterpreter := true` "
@@ -1206,7 +1217,7 @@ extern "C" LEAN_EXPORT obj_res lean_run_mod_init_core(b_obj_arg  sym) {
     }
 }
 
-extern "C" LEAN_EXPORT object * lean_run_init(object * env, object * opts, object * decl, object * init_decl, object *) {
+extern "C" LEAN_EXPORT object * lean_run_init(object * env, object * opts, object * decl, object * init_decl) {
     return interpreter::with_interpreter<object *>(TO_REF(elab_environment, env), TO_REF(options, opts), TO_REF(name, decl), [&](interpreter & interp) {
         return interp.run_init(TO_REF(name, decl), TO_REF(name, init_decl));
     });
@@ -1225,6 +1236,15 @@ void initialize_ir_interpreter() {
     });
     ir::g_native_symbol_cache = new name_hash_map<ir::native_symbol_cache_entry>();
     ir::g_native_symbol_cache_mutex = new std::shared_mutex();
+}
+
+void initialize_ir_interpreter_thread() {
+    // In WASI, the function table is thread-local. In this setting, the native
+    //  symbol cache cannot be shared between threads.
+#ifdef __wasi__
+    if (ir::g_native_symbol_cache == nullptr)
+        ir::g_native_symbol_cache = new name_hash_map<ir::native_symbol_cache_entry>();
+#endif
 }
 
 void finalize_ir_interpreter() {

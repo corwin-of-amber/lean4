@@ -596,7 +596,7 @@ extern "C" LEAN_EXPORT usize lean_compacted_region_size(usize region) {
     return reinterpret_cast<compacted_region *>(region)->size();
 }
 
-extern "C" LEAN_EXPORT obj_res lean_compacted_region_free(usize region, object *) {
+extern "C" LEAN_EXPORT obj_res lean_compacted_region_free(usize region) {
     delete reinterpret_cast<compacted_region *>(region);
     return lean_io_result_mk_ok(lean_box(0));
 }

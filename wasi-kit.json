@@ -1,0 +1,34 @@
+{
+    "": {
+        "dependencies": {
+            "wasi-sdk": "33",
+            "wasix-libc": "2026-06-11:exnref-ehpic"
+        }
+    },
+    "wasix": true,
+    "*": {
+        "args": ["-fwasm-exceptions", "-mllvm=-wasm-use-legacy-eh=false", /*"-mtail-call",*/ "-fPIC"]
+    },
+    "presets": {
+        "exe": {
+            "noargs": ["-lgmp", "-luv"],
+            "args": [
+                "--target=wasm32-wasi",
+                "-fwasm-exceptions", "-Wl,--export=__cpp_exception", "-Wl,-pie",
+                "-Wl,-allow-undefined", "-Wl,--allow-multiple-definition",
+                "-fPIC", "-lunwind"],
+            "_comment": "`-Wl,-pie` is needed for running in upstream wasmer. For wasmer-js (with 'leanker'), `-Wl,--import-table` could work as well."
+        }
+    },
+    "bin/lean": {
+        "output": "bin/lean.wasm",
+        "preset": "exe",
+        "args": [["..."], "@lib/export-symbols.txt"]
+    },
+    "bin/lake": {
+        "output": "bin/lake.wasm",
+        "preset": "exe",
+        "noargs": [["..."], "-llean", "-Wl,-dead_strip"],
+        "args": [["..."], "lib/liblean.wa"]
+    }
+}

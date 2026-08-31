@@ -15,7 +15,7 @@ Authors: Leonardo de Moura, Sebastian Ullrich
 #include <mach-o/dyld.h>
 #include <unistd.h>
 #else
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 #include <emscripten.h>
 #endif
 // Linux include files
@@ -966,7 +966,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_getenv(b_obj_arg env_var) {
     if (strlen(env_var_str) != lean_string_size(env_var) - 1) {
         return mk_option_none();
     }
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
     // HACK(WN): getenv doesn't seem to work in Emscripten even though it should
     // see https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-environment-variables
     char* val = reinterpret_cast<char*>(EM_ASM_INT({
@@ -1246,7 +1246,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_hard_link(b_obj_arg orig, b_obj_arg link)
 }
 
 /* createTempFile : IO (Handle × FilePath) */
-extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile(lean_object * /* w */) {
+extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile() {
     char path[PATH_MAX];
     size_t base_len = PATH_MAX;
     int ret = uv_os_tmpdir(path, &base_len);
@@ -1292,7 +1292,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile(lean_object * /* w */) {
 }
 
 /* createTempDir : IO FilePath */
-extern "C" LEAN_EXPORT obj_res lean_io_create_tempdir(lean_object * /* w */) {
+extern "C" LEAN_EXPORT obj_res lean_io_create_tempdir() {
     char path[PATH_MAX];
     size_t base_len = PATH_MAX;
     int ret = uv_os_tmpdir(path, &base_len);
@@ -1372,7 +1372,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_app_path() {
     if (!realpath(buf1, buf2))
         return io_result_mk_error("failed to resolve symbolic links when locating application");
     return io_result_mk_ok(mk_string(buf2));
-#elif defined(LEAN_EMSCRIPTEN)
+#elif defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
     // See https://emscripten.org/docs/api_reference/emscripten.h.html#c.EM_ASM_INT
     char* appPath = reinterpret_cast<char*>(EM_ASM_INT({
         if ((typeof process === "undefined") || (process.release.name !== "node")) {
@@ -1391,6 +1391,9 @@ extern "C" LEAN_EXPORT obj_res lean_io_app_path() {
     object * appPathLean = mk_string(appPath);
     free(appPath);
     return io_result_mk_ok(appPathLean);
+#elif defined(AMBER)
+    /** @todo */
+    return io_result_mk_ok(mk_string("/usr/bin/lean"));
 #else
     // Linux version
     char path[PATH_MAX];
