@@ -1391,7 +1391,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_app_path() {
     object * appPathLean = mk_string(appPath);
     free(appPath);
     return io_result_mk_ok(appPathLean);
-#elif defined(AMBER)
+#elif defined(__wasi__) && defined(AMBER)
     /** @todo */
     return io_result_mk_ok(mk_string("/usr/bin/lean"));
 #else

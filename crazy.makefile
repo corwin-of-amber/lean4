@@ -8,17 +8,19 @@ ALLCPP := ${shell find stage0/src -name "*.cpp"}
 ALLC := ${shell find stage0/stdlib -name "*.c"}
 SRC_LEAN_CPP = stage0/src/shell/lean.cpp
 SRC_LAKE_C = stage0/stdlib/LakeMain.c
-INC = -Istage0/src{,/include}
+INC = -Istage0/src -Istage0/src/include
 else
 STAGE := 1
 ALLCPP := ${shell find src -name "*.cpp"}
 ALLC := ${shell find build/release/stage1/lib/temp -name "*.c"}
 SRC_LEAN_CPP = src/shell/lean.cpp
 SRC_LAKE_C = build/release/stage1/lib/temp/LakeMain.c
-INC = -Isrc{,/include}
+INC = -Isrc -Isrc/include
 endif
 
-MAINS = LeanIR.c LeanChecker.c LakeMain.c shell/lean.cpp
+INC += -Icrazy -Icrazy/include
+
+MAINS = LeanIR.c LeanChecker.c LakeMain.c Leanc.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
 OBJ_DIR = obj
@@ -37,7 +39,7 @@ endif
 
 #MODIFIERS += -DLEAN_USE_GMP
 
-CFLAGS = $(MODIFIERS) -Icrazy/include $(INC)
+CFLAGS = $(MODIFIERS) $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
 
 # dbg
@@ -101,33 +103,33 @@ lib-init-fresh:
 	cp -r src/Init.lean src/Init   tmp/init/src
 	$(make-rec) lib-init
 
+WASMER_FLAGS = --stack-size=4000000
+ifneq ($(J),)
+WASMER_FLAGS += --env LEAN_NUM_THREADS=$(J)
+endif
+WASMER_FLAGS += ${foreach d, home usr dev,\$(newline) --volume build-wasmer-fs/$(d):/$(d)}
+
 lib-init-wasm: build-wasmer-fs
 	cp -r src/Init.lean src/Init build-wasmer-fs/home/init/src
-	wasmer run --cwd /home/init --stack-size=4000000 \
-	  --volume build-wasmer-fs/home:/home \
-	  --volume build-wasmer-fs/usr:/usr \
-	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Init
 	@$(make-rec) lib-init-wasm-tar
 
 lib-std-wasm: build-wasmer-fs
 	cp -r src/Std.lean src/Std build-wasmer-fs/home/init/src
-	wasmer run --cwd /home/init --stack-size=4000000 \
-	  --volume build-wasmer-fs/home:/home \
-	  --volume build-wasmer-fs/usr:/usr \
-	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Std
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Std
 
 lib-lean-wasm: build-wasmer-fs
 	cp -r src/Lean.lean src/Lean build-wasmer-fs/home/init/src
-	wasmer run --cwd /home/init --stack-size=4000000 \
-	  --volume build-wasmer-fs/home:/home \
-	  --volume build-wasmer-fs/usr:/usr \
-	  --volume build-wasmer-fs/dev:/dev bin/lake.wasm -- build Lean
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lean
+
+lib-lake-wasm: build-wasmer-fs
+	cp -r src/lake build-wasmer-fs/home/init/src
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lake
 
 lib-init-wasm-tar:
 	mkdir -p lib
 	( cd build-wasmer-fs/home/init/build/lib/lean && \
 	  tar cf ${PWD}/lib/Init32.tar *.olean `find Init -name '*.olean' -o -name '*.ir'` )
-# -o -name '*.ilean' -o -name '*.olean.*'` )
 
 lib-std-wasm-tar:
 	mkdir -p lib
@@ -135,3 +137,10 @@ lib-std-wasm-tar:
 	  tar cf ${PWD}/lib/Std32.tar `find Std -name '*.olean' -o -name '*.ir'` )
 
 .PHONY: lib-init lib-init-%
+
+
+
+define newline
+
+
+endef

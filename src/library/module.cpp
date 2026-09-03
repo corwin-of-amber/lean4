@@ -178,7 +178,7 @@ static std::vector<compacted_region *> extract_dep_regions(b_obj_arg odep_region
 }
 
 extern "C" LEAN_EXPORT object * lean_compacted_region_save(b_obj_arg ofname, b_obj_arg mod, b_obj_arg odata,
-                                                           b_obj_arg odep_regions, obj_arg oprev, object *) {
+                                                           b_obj_arg odep_regions, obj_arg oprev) {
     // `mmap` addresses must be page-aligned. The default (non-huge) page size on x86-64 is 4KB;
     // `MapViewOfFileEx` addresses must be aligned to the "memory allocation granularity" (64KB).
     const size_t ALIGN = 1LL<<16;
@@ -278,7 +278,7 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_save(b_obj_arg ofname, b_o
 // in this file. Returns `(α × CompactedRegion)`, where `α` is the type the Lean caller asks the
 // root to be interpreted as — the C side does no type checking and the caller is responsible for
 // using a type compatible with what was saved (see `CompactedRegion.read`).
-extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_obj_arg odep_regions, object *) {
+extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_obj_arg odep_regions) {
     std::string olean_fn(lean_string_cstr(ofname));
     std::vector<compacted_region *> dep_regions = extract_dep_regions(odep_regions);
     try {

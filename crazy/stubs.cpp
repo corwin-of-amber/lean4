@@ -1,3 +1,4 @@
+#include <string.h>
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -49,6 +50,8 @@ extern "C" {
 
 const char* uv_strerror(int err) { return strerror(err); }
 
+#define TIMESPEC(X) { .tv_sec = (long)(X).tv_sec, .tv_nsec = (long)(X).tv_nsec }
+
 int uv_fs_stat(uv_loop_t* loop,
                uv_fs_t* req,
                const char* path,
@@ -69,12 +72,15 @@ int uv_fs_stat(uv_loop_t* loop,
         uvres.st_blksize = res.st_blksize;
         uvres.st_flags = 0;
         uvres.st_gen = 0;
-        uvres.st_atim = { .tv_sec = (long)res.st_atimespec.tv_sec,
-                          .tv_nsec = (long)res.st_atimespec.tv_nsec };
-        uvres.st_mtim = { .tv_sec = (long)res.st_mtimespec.tv_sec,
-                          .tv_nsec = (long)res.st_mtimespec.tv_nsec };
-        uvres.st_ctim = { .tv_sec = (long)res.st_ctimespec.tv_sec,
-                          .tv_nsec = (long)res.st_ctimespec.tv_nsec };
+#if defined(__APPLE__) || defined(__wasi__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+        uvres.st_atim = TIMESPEC(res.st_atimespec);
+        uvres.st_mtim = TIMESPEC(res.st_mtimespec);
+        uvres.st_ctim = TIMESPEC(res.st_ctimespec);
+#else
+        uvres.st_atim = TIMESPEC(res.st_atim);
+        uvres.st_mtim = TIMESPEC(res.st_mtim);
+        uvres.st_ctim = TIMESPEC(res.st_ctim);
+#endif
         uvres.st_birthtim = uvres.st_ctim;
     }
     return rc == 0 ? 0 : -errno;
