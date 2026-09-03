@@ -30,6 +30,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { makeCrc } from './dyntable/crc';
 
 class Sweeper {
     func: FunctionSweeper
@@ -49,6 +50,12 @@ class FunctionSweeper {
     constructor(public text: string) {
     }
 
+    *prototypes() {
+        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|runtime_initialize_\S+?)\(.*\))\s*[;{]/mg))
+            if (!mo[2].includes('0'))
+                yield {sig: mo[1], name: mo[2]}
+    }
+
     *buddies() {
         for (let mo of this.text.matchAll(/^\S+ (\S+?)\(.*\nLEAN_EXPORT lean_object\s*\*\s*(\S+?__boxed)\(/mg))
             yield {plain: mo[1], boxed: mo[2]};
@@ -57,6 +64,11 @@ class FunctionSweeper {
 
 class GlobalDataSweeper {
     constructor(public text: string) {
+    }
+
+    *prototypes() {
+        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*([_\w]*));/mg))
+            yield {sig: mo[1], name: mo[2]}
     }
 
     *inited() {
@@ -70,6 +82,7 @@ class GlobalDataSweeper {
 /** This is not a full list! */
 const MODULES_WITH_EXTERNS = [
     'Init/Prelude',
+    'Init/Core',
     'Init/Data/Repr',
     'Init/Data/Nat/Gcd', 'Init/Data/Nat/Bitwise/Basic', 'Init/Data/Nat/Div/Basic',
     'Init/Data/Int/Basic', 'Init/Data/Int/DivMod/Basic',
@@ -77,34 +90,101 @@ const MODULES_WITH_EXTERNS = [
     'Init/Data/SInt/Basic',
     'Init/Data/Array/Basic', 'Init/Data/Array/Set', 'Init/Data/ByteArray/Basic',
     'Init/Data/String/Basic', 'Init/Data/String/Defs', 'Init/Data/String/Search', 'Init/Data/String/Bootstrap', 'Init/Data/String/PosRaw', 'Init/Data/String/Pattern/Basic',
+    'Init/Data/Ord/String',
     'Init/System/IO',
     'Init/System/ST',
-    'Init/Util'
+    'Init/Task',
+    'Init/Util',
+    'Lean/Util/Profile'
 ];
 
-const MODULES_WITH_INITED = fs.readFileSync('/tmp/a', 'utf-8').trim().split('\n');
+const MODULES_WITH_INITED = []; //fs.readFileSync('/tmp/a', 'utf-8').trim().split('\n');
 
 const ROOT_C_DIR = 'build/release/stage1/lib/temp'
+//const ROOT_C_DIR = 'build/release/stage1/lib/temp/Init/Data/String/Pattern'
 
 const EXTRA = ['l_Lean_Parser_categoryParserFnExtension', 'l___private_Lean_ImportingFlag_0__Lean_importingRef']
 
+function allCFiles(dir: string) {
+    return fs.readdirSync(dir, { recursive: true })
+             .filter((f: string) => f.endsWith('.c'));
+}
+
+function *chain<T>(...iterables: Iterable<T>[]) {
+    for (let it of iterables) yield* it;
+}
+
+const EXCEPT = ['LeanIR.c', 'LeanChecker.c', 'Leanc.c', 'LakeMain.c'];
+
+function *procession(tbl: Set<string>, max: number) {
+    for (let fn of allCFiles(ROOT_C_DIR)) {
+        if (!fn.endsWith('.c')) fn += '.c';
+        if (EXCEPT.includes(fn)) continue;
+
+        let sw = Sweeper.fromFile(path.join(ROOT_C_DIR, fn));
+
+        for (let it of chain(sw.func.prototypes(), sw.glob.prototypes())) {
+            if (!tbl.has(it.name)) {
+                tbl.add(it.name);
+                yield it;
+            }
+            if (tbl.size >= max) return;
+        }
+    }
+}
+
+function extractAsLinkFlags(out: any, max: number) {
+    let tbl = new Set<string>();
+
+    out.write(`#include "lean/lean.h"\n\n`)
+
+    for (let it of procession(tbl, max)) {
+        out.write(`-Wl,--export=${it.name}\n`);
+    }
+
+    process.stderr.write(`[info] # symbols: ${tbl.size}\n`);
+}
+
+function extractAsCTable(out: any, max: number) {
+    let tbl = new Set<string>();
+
+    out.write(`#include "lean/lean.h"\n\n`)
+
+    for (let it of procession(tbl, max)) {
+        out.write(`extern ${it.sig} __attribute__((weak_import));\n`);
+    }
+
+    let crc = makeCrc(32, 0x629F6FBF), ctbl = new Set<number>();
+
+    out.write(`\n\nstruct entry { uint32_t k; void *p; };\n`)
+    out.write(`\nLEAN_EXPORT struct entry __dyn_table[] = {\n    `)
+    for (let nm of tbl) {
+        let k = crc.ascii(nm);
+        ctbl.add(k);
+        out.write(`{0x${k.toString(16)}, &${nm}},`);
+    }
+    out.write(`\n     {0, 0}\n};\n`);
+
+    process.stderr.write(`[info] # symbols: ${tbl.size}\n`);
+
+    // Sanity
+    if (ctbl.size != tbl.size)
+        throw new Error("CRC collision");
+}
+
 function main() {
-    for (let fn of MODULES_WITH_EXTERNS) {
-        let sw = Sweeper.fromFile(path.join(ROOT_C_DIR, `${fn}.c`));
+    let out = process.stdout, max = 70000;
 
-        for (let it of sw.func.buddies())
-            process.stdout.write(`-Wl,--export=${it.boxed}\n`);
+    for (let arg of process.argv) {
+        switch (arg) {
+            case 'link':
+                extractAsLinkFlags(out, max); break;
+            case 'dyn':
+                extractAsCTable(out, max); break;
+        }
     }
 
-    for (let fn of MODULES_WITH_INITED) {
-        let sw = Sweeper.fromFile(path.join(ROOT_C_DIR, `${fn}.c`));
-
-        for (let it of sw.glob.inited())
-            process.stdout.write(`-Wl,--export=${it.sym}\n`);
-        //for (let k of EXTRA) {
-        //    process.stdout.write(`-Wl,--export=${k}\n`);
-        //}
-    }
+    // wasi-kit clang -Isrc -Isrc/include -Icrazy/include -include lean/lean.h -c out.c
 }
 
 main();
