@@ -51,7 +51,7 @@ class FunctionSweeper {
     }
 
     *prototypes() {
-        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|runtime_initialize_\S+?)\(.*\))\s*[;{]/mg))
+        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|runtime_initialize_\S+?|initialize_\S+?)\(.*\))\s*[;{]/mg))
             if (!mo[2].includes('0'))
                 yield {sig: mo[1], name: mo[2]}
     }
@@ -106,8 +106,8 @@ const ROOT_C_DIR = 'build/release/stage1/lib/temp'
 const EXTRA = ['l_Lean_Parser_categoryParserFnExtension', 'l___private_Lean_ImportingFlag_0__Lean_importingRef']
 
 function allCFiles(dir: string) {
-    return fs.readdirSync(dir, { recursive: true })
-             .filter((f: string) => f.endsWith('.c'));
+    return fs.readdirSync(dir, {recursive: true, encoding: 'utf-8'})
+             .filter(f => f.endsWith('.c'));
 }
 
 function *chain<T>(...iterables: Iterable<T>[]) {
@@ -135,8 +135,6 @@ function *procession(tbl: Set<string>, max: number) {
 
 function extractAsLinkFlags(out: any, max: number) {
     let tbl = new Set<string>();
-
-    out.write(`#include "lean/lean.h"\n\n`)
 
     for (let it of procession(tbl, max)) {
         out.write(`-Wl,--export=${it.name}\n`);

@@ -52,3 +52,7 @@ name = "Std"
 [[lean_lib]]
 name = "Lean"
 
+[[lean_lib]]
+name = "Lake"
+srcDir = "lake"
+globs = ["Lake.*"]
