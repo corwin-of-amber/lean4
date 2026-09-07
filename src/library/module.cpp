@@ -200,7 +200,11 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_save(b_obj_arg ofname, b_o
         // (https://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details).
         // On Linux at least, the stack grows down from ~0x7fff... followed by shared libraries,
         // so reserve a bit of space for them (0x7fff...-0x7f00... = 1TB).
+#if INTPTR_MAX > 0x7f0000000000
         base_addr = base_addr % 0x7f0000000000;
+#else
+        base_addr = base_addr % INTPTR_MAX;
+#endif
         base_addr = base_addr & ~(ALIGN - 1);
         std::vector<compacted_region *> dep_regions = extract_dep_regions(odep_regions);
         cs_obj = object_ref(mk_compactor(reinterpret_cast<void *>(base_addr), std::move(dep_regions)));

@@ -51,9 +51,8 @@ class FunctionSweeper {
     }
 
     *prototypes() {
-        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|runtime_initialize_\S+?|initialize_\S+?)\(.*\))\s*[;{]/mg))
-            if (!mo[2].includes('0'))
-                yield {sig: mo[1], name: mo[2]}
+        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|(?:meta_|runtime_)?initialize_\S+?)\(.*\))\s*[;{]/mg))
+            yield {sig: mo[1], name: mo[2]}
     }
 
     *buddies() {
@@ -171,7 +170,7 @@ function extractAsCTable(out: any, max: number) {
 }
 
 function main() {
-    let out = process.stdout, max = 70000;
+    let out = process.stdout, max = 150000;
 
     for (let arg of process.argv) {
         switch (arg) {

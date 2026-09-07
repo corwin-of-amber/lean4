@@ -27,12 +27,13 @@ OBJ_DIR = obj
 
 SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)} crazy/stubs.cpp
 SRC_C = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLC)}
+#crazy/dyn.c crazy/dyntable/crc.c
 
 OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
 
 MODIFIERS = -DLEAN_MULTI_THREAD -DLEAN_MULTI_THREAD_FRUGAL
 MODIFIERS += -DLEAN_EMSCRIPTEN
-MODIFIERS += -DAMBER -DLEAN_USE_POSIX_SPAWN
+MODIFIERS += -DAMBER -DLEAN_USE_POSIX_SPAWN -DLEAN_DEFAULT_INTERPRETER_PREFER_NATIVE=false
 ifeq ($(STAGE),0)
 MODIFIERS += -DLEAN_IS_STAGE0
 endif
@@ -41,6 +42,12 @@ endif
 
 CFLAGS = $(MODIFIERS) $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
+
+# - platform-dependent flags
+OS := $(shell uname -s)
+ifeq ($(OS), Linux)
+    LDFLAGS += -rdynamic
+endif
 
 # dbg
 #CFLAGS += -g -DLEAN_DEBUG
@@ -88,9 +95,10 @@ wasm-opt:
 
 build-wasmer-fs:
 	rm -rf $@
-	mkdir -p $@/home/init/src $@/usr/bin $@/dev
+	mkdir -p $@/home/init/src $@/usr/bin $@/etc $@/dev
 	cp bin/lean.wasm              $@/usr/bin/lean
 	cp crazy/init/lakefile.toml   $@/home/init
+	cp /etc/localtime             $@/etc
 	dd if=/dev/urandom of=$@/dev/urandom bs=1K count=1
 
 lib-init:
@@ -135,6 +143,11 @@ lib-std-wasm-tar:
 	mkdir -p lib
 	( cd build-wasmer-fs/home/init/build/lib/lean && \
 	  tar cf ${PWD}/lib/Std32.tar `find Std -name '*.olean' -o -name '*.ir'` )
+
+lib-wasm-tar:  # huge file
+	mkdir -p lib
+	( cd build-wasmer-fs/home/init/build/lib/lean && \
+	  tar cf ${PWD}/lib/Lib32.tar `find * -name '*.olean' -o -name '*.ir'` )
 
 .PHONY: lib-init lib-init-%
 

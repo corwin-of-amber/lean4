@@ -14,19 +14,24 @@ async function copyDirSkippingLake(src: string, dest: string) {
 
 const WASMER = {
     volume: 'build-wasmer-fs',
-    mounts: ['usr', 'home', 'dev'],
+    mounts: ['usr', 'home', 'etc', 'dev'],
     flags: ['--stack-size=4000000'],
     env: {LEAN_NUM_THREADS: 2}
+}
+
+function runCommand(cmd: string, args: string[]) {
+    console.log(cmd, args.join(' '));
+    return spawn(cmd, args, {stdio: 'inherit'});
 }
 
 async function runWasmer(cwd: string, wasm: string, args: string[]) {
     const w = WASMER;
 
-    let p = spawn('wasmer', ['run', ...w.flags,
+    let p = runCommand('wasmer', ['run', ...w.flags,
         ...w.mounts.flatMap(d => ['--volume', `${path.join(w.volume, d)}:/${d}`]),
         ...Object.entries(w.env).flatMap(([k,v]) => ['--env', `${k}=${v}`]),
         '--cwd', cwd,
-        wasm, '--', ...args], {stdio: 'inherit'});
+        wasm, '--', ...args]);
 
     return await new Promise((resolve, reject) => {
         p.on('exit', resolve);
