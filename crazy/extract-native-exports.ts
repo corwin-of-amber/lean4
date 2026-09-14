@@ -47,12 +47,15 @@ class Sweeper {
 }
 
 class FunctionSweeper {
+    readonly EXCLUDE = ['00', '__lam__', '__redArg'] // heuristically filters some redundant symbols
+
     constructor(public text: string) {
     }
 
     *prototypes() {
-        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?__boxed|(?:meta_|runtime_)?initialize_\S+?)\(.*\))\s*[;{]/mg))
-            yield {sig: mo[1], name: mo[2]}
+        for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*(\S+?)\(.*\))\s*[;{]/mg))
+            if (!this.EXCLUDE.some(s => mo[2].includes(s)))
+                yield {sig: mo[1], name: mo[2], kind: 'func'}
     }
 
     *buddies() {
@@ -67,12 +70,13 @@ class GlobalDataSweeper {
 
     *prototypes() {
         for (let mo of this.text.matchAll(/^LEAN_EXPORT (lean_object\s*\*\s*([_\w]*));/mg))
-            yield {sig: mo[1], name: mo[2]}
+            yield {sig: mo[1], name: mo[2], kind: 'glob'}
     }
 
     *inited() {
-        for (let mo of this.text.matchAll(/^\S+ = lean_io_result.*\nlean_mark_persistent\((\S+?)\)/mg))
-            yield {sym: mo[1]};
+        for (let mo of this.text.matchAll(/^(\S+) = lean_io_result.*\nlean_mark_persistent\((\S+?)\)/mg))
+            if (mo[1] === mo[2])
+                yield {sym: mo[1]};
     }
 }
 
@@ -122,7 +126,15 @@ function *procession(tbl: Set<string>, max: number) {
 
         let sw = Sweeper.fromFile(path.join(ROOT_C_DIR, fn));
 
+        let buddies = set(sw.func.buddies(), o => o.boxed),
+            inited = set(sw.glob.inited(), o => o.sym);
+
         for (let it of chain(sw.func.prototypes(), sw.glob.prototypes())) {
+            if (it.kind === 'func' &&
+                !(it.name.match(/^(?:meta_|runtime_)?initialize_/) ||
+                  buddies.has(it.name))) continue;
+            if (it.kind === 'glob' && !inited.has(it.name)) continue;
+
             if (!tbl.has(it.name)) {
                 tbl.add(it.name);
                 yield it;
@@ -167,6 +179,13 @@ function extractAsCTable(out: any, max: number) {
     // Sanity
     if (ctbl.size != tbl.size)
         throw new Error("CRC collision");
+}
+
+/** set former from iterator */
+function set<T,S>(it: Iterable<T>, f: (t: T) => S) {
+    let s = new Set<S>;
+    for (let el of it) s.add(f(el));
+    return s;
 }
 
 function main() {

@@ -55,6 +55,10 @@ functions, which have a (relatively) homogeneous ABI that we can use without run
 #define LEAN_DEFAULT_INTERPRETER_PREFER_NATIVE true
 #endif
 
+#if defined(AMBER_DL_DYNTABLE)
+void *dlsym_dyn(const char * sym);  // defined in `dlsym_dyn.cpp`
+#endif
+
 namespace lean {
 
 void initialize_ir_interpreter_thread();
@@ -341,6 +345,23 @@ void print_value(tout const & ios, value const & v, type t) {
   return print_value(const_cast<tout &>(ios), v, t);
 }
 
+#if defined(AMBER_DL_TRACE) && !defined(__wasi__)
+std::vector<std::string> lookup_log;
+
+void dump_ir_log() {
+    if (lookup_log.size() > 0) {
+        char filename[] = "/tmp/irlog/lookup_XXXXXX";
+        int fd = mkstemp(filename);
+        FILE *oflog = fdopen(fd, "w");
+
+        for (auto it : lookup_log)
+            fprintf(oflog, "%s\n", it.data());
+
+        fclose(oflog);
+    }
+}
+#endif
+
 void * lookup_symbol_in_cur_exe(char const * sym) {
 #ifdef LEAN_WINDOWS
     std::vector<HMODULE> hmods(128);
@@ -361,7 +382,16 @@ void * lookup_symbol_in_cur_exe(char const * sym) {
     }
     return nullptr;
 #else
-    return dlsym(RTLD_DEFAULT, sym);
+#if defined(AMBER_DL_DYNTABLE)
+    auto ret = dlsym_dyn(sym);
+#else
+    auto ret = dlsym(RTLD_DEFAULT, sym);
+#endif
+#if defined(AMBER_DL_TRACE) && !defined(__wasi__)
+    //if (!ret) std::cerr << "[ir] not found: " << sym << std::endl;
+    if (ret) lookup_log.push_back(sym);
+#endif
+    return ret;
 #endif
 }
 
@@ -852,7 +882,9 @@ private:
             return e_new;
         }
         symbol_cache_entry e_new { get_decl(fn), {nullptr, false} };
-        if (m_prefer_native || decl_tag(e_new.m_decl) == decl_kind::Extern || has_init_attribute(m_env, fn)) {
+        if (m_prefer_native || decl_tag(e_new.m_decl) == decl_kind::Extern
+                || fn_body_tag(decl_fun_body(e_new.m_decl)) == fn_body_kind::Unreachable
+                || has_init_attribute(m_env, fn)) {
             string_ref mangled = get_symbol_stem(m_env, fn);
             string_ref boxed_mangled = mk_mangled_boxed_name(mangled);
             // check for boxed version first
@@ -1236,6 +1268,10 @@ void initialize_ir_interpreter() {
     });
     ir::g_native_symbol_cache = new name_hash_map<ir::native_symbol_cache_entry>();
     ir::g_native_symbol_cache_mutex = new std::shared_mutex();
+
+#if defined(AMBER_DL_TRACE) && !defined(__wasi__)
+    std::atexit(ir::dump_ir_log);
+#endif
 }
 
 void initialize_ir_interpreter_thread() {

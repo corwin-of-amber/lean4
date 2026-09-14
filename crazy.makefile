@@ -27,9 +27,6 @@ OBJ_DIR = obj
 
 SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)} crazy/stubs.cpp
 SRC_C = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLC)}
-#crazy/dyn.c crazy/dyntable/crc.c
-
-OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
 
 MODIFIERS = -DLEAN_MULTI_THREAD -DLEAN_MULTI_THREAD_FRUGAL
 MODIFIERS += -DLEAN_EMSCRIPTEN
@@ -39,6 +36,17 @@ MODIFIERS += -DLEAN_IS_STAGE0
 endif
 
 #MODIFIERS += -DLEAN_USE_GMP
+
+# This is a special build mode that uses a C array as a table for
+# native symbol lookup (see `ir_interpreter.cpp`).
+ifeq ($(DLSYM),dyn)
+SRC_C += crazy/dyn.c crazy/dyntable/crc.c
+SRC_CPP += crazy/dyntable/dlsym_dyn.cpp
+MODIFIERS += -DAMBER_DL_DYNTABLE
+endif
+
+
+OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
 
 CFLAGS = $(MODIFIERS) $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
@@ -137,7 +145,7 @@ lib-lake-wasm: build-wasmer-fs
 lib-init-wasm-tar:
 	mkdir -p lib
 	( cd build-wasmer-fs/home/init/build/lib/lean && \
-	  tar cf ${PWD}/lib/Init32.tar *.olean `find Init -name '*.olean' -o -name '*.ir'` )
+	  tar cf ${PWD}/lib/Init32.tar *.olean *.ir `find Init -name '*.olean' -o -name '*.ir'` )
 
 lib-std-wasm-tar:
 	mkdir -p lib
