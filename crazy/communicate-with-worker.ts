@@ -17,11 +17,19 @@ async function main() {
 
     p.then(res => { console.log("=====>", res); process.exit(); });
 
-    for await (let inc of wp.experiment())
+    for await (let inc of wp.experiment()) {
         console.log('[info] recv', inc);
+        displayDiagnostics(inc);
+    }
 }
 
 function delay(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
+function displayDiagnostics(message: any) {
+    for (let diag of message?.params?.diagnostics ?? [])
+        console.log(diag);
+}
+
 
 class LeanWorkerProcess {
     process?: ChildProcess
@@ -36,7 +44,7 @@ class LeanWorkerProcess {
 
     async launch() {
         //const lean = 'build/release/stage1/bin/lean', lib = undefined;
-        const lean = 'bin/lean', lib = 'tmp/init/build/lib/lean';
+        const lean = 'bin/lean', lib = undefined; // 'tmp/init/build/lib/lean';
         let cp = spawn(lean, ['--worker'], {
             env: {LEAN_PATH: lib}
         });
