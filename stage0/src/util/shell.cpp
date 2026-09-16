@@ -47,7 +47,7 @@ Author: Leonardo de Moura
 #include <getopt.h>
 #include <unistd.h>
 #endif
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 #include <emscripten.h>
 #endif
 #include "githash.h" // NOLINT
@@ -281,7 +281,7 @@ static void report_task_get_blocked_time(std::chrono::nanoseconds d) {
 }
 
 extern "C" LEAN_EXPORT int lean_main(int argc, char ** argv) {
-#ifdef LEAN_EMSCRIPTEN
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
     // When running in command-line mode under Node.js, we make system directories available in the virtual filesystem.
     // This mode is used to compile 32-bit oleans.
     EM_ASM(
