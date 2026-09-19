@@ -25,7 +25,15 @@ namespace lean {
 // stack guard of the main thread
 static stack_guard * g_stack_guard;
 
-#ifdef LEAN_WINDOWS
+#if defined(AMBER)
+
+stack_guard::stack_guard() { }
+stack_guard::~stack_guard() {}
+
+extern "C" LEAN_EXPORT void segv_handler(int signum, siginfo_t * info, void *) {
+}
+
+#elif defined(LEAN_WINDOWS)
 // https://github.com/rust-lang/rust/blob/master/src/libstd/sys/windows/stack_overflow.rs
 
 LONG WINAPI stack_overflow_handler(struct _EXCEPTION_POINTERS * info) {

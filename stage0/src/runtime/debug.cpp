@@ -10,7 +10,7 @@ Author: Leonardo de Moura
 #include <string>
 #include <memory>
 #include <cstdlib>
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
 #include <emscripten.h>
 #endif
 #if !defined(LEAN_WINDOWS)
@@ -86,7 +86,7 @@ void enable_debug_dialog(bool flag) {
 }
 
 void invoke_debugger() {
-#if defined(LEAN_EMSCRIPTEN)
+#if defined(LEAN_EMSCRIPTEN) && !defined(AMBER)
     EM_ASM(debugger;);
     exit(1);
 #else

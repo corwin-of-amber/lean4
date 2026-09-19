@@ -23,7 +23,9 @@ extern "C" void initialize_libuv() {
     initialize_libuv_signal();
     initialize_libuv_loop();
 
+#if !defined(AMBER)
     lthread([]() { event_loop_run_loop(&global_ev); });
+#endif
 }
 
 extern "C" LEAN_EXPORT char ** lean_setup_args(int argc, char ** argv) {
