@@ -9,6 +9,11 @@
 #include <sys/stat.h>
 
 
+#ifdef __wasi__
+extern "C" int flock(int fd, int operation) { return 0; }
+#endif
+
+/** @deprecated */
 // function usage count
 static struct {
     std::map<std::string, size_t> counters;
@@ -42,6 +47,8 @@ void increment_call_count(const char *func) {
         cov.counters[func] += 1;
     }
 }
+
+/* ----- */
 
 
 extern "C" {
