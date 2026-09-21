@@ -25,7 +25,7 @@ Author: Leonardo de Moura
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
-#elif !defined(LEAN_WINDOWS)
+#elif !defined(LEAN_WINDOWS) && !defined(LEAN_EMSCRIPTEN)
 #include <link.h>
 #endif
 
@@ -100,7 +100,7 @@ LEAN_EXPORT std::vector<lib_info> get_loaded_libs() {
         if (!name) continue;
         libs.push_back({reinterpret_cast<size_t>(hdr), name});
     }
-#else
+#elif !defined(LEAN_EMSCRIPTEN)
     // Linux: use dl_iterate_phdr
     dl_iterate_phdr([](struct dl_phdr_info * info, size_t, void * data) -> int {
         std::vector<lib_info> * libs = static_cast<std::vector<lib_info> *>(data);
