@@ -10,6 +10,7 @@
 
 
 #ifdef __wasi__
+// Oops
 extern "C" int flock(int fd, int operation) { return 0; }
 #endif
 
@@ -59,37 +60,48 @@ const char* uv_strerror(int err) { return strerror(err); }
 
 #define TIMESPEC(X) { .tv_sec = (long)(X).tv_sec, .tv_nsec = (long)(X).tv_nsec }
 
+static void _uv_stat_result(uv_stat_t& uvres, struct stat& res) {
+    uvres.st_dev = res.st_dev;
+    uvres.st_ino = res.st_ino;
+    uvres.st_mode = res.st_mode;
+    uvres.st_nlink = res.st_nlink;
+    uvres.st_uid = res.st_uid;
+    uvres.st_gid = res.st_gid;
+    uvres.st_size = res.st_size;
+    uvres.st_blocks = res.st_blocks;
+    uvres.st_blksize = res.st_blksize;
+    uvres.st_flags = 0;
+    uvres.st_gen = 0;
+#if defined(__APPLE__) || defined(__wasi__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    uvres.st_atim = TIMESPEC(res.st_atimespec);
+    uvres.st_mtim = TIMESPEC(res.st_mtimespec);
+    uvres.st_ctim = TIMESPEC(res.st_ctimespec);
+#else
+    uvres.st_atim = TIMESPEC(res.st_atim);
+    uvres.st_mtim = TIMESPEC(res.st_mtim);
+    uvres.st_ctim = TIMESPEC(res.st_ctim);
+#endif
+    uvres.st_birthtim = uvres.st_ctim;
+}
+
 int uv_fs_stat(uv_loop_t* loop,
                uv_fs_t* req,
                const char* path,
                uv_fs_cb cb) {
     //STUB(<< " " << path);
     struct stat res;
-    uv_stat_t& uvres = req->statbuf;
     int rc = stat(path, &res);
-    if (rc == 0) {
-        uvres.st_dev = res.st_dev;
-        uvres.st_ino = res.st_ino;
-        uvres.st_mode = res.st_mode;
-        uvres.st_nlink = res.st_nlink;
-        uvres.st_uid = res.st_uid;
-        uvres.st_gid = res.st_gid;
-        uvres.st_size = res.st_size;
-        uvres.st_blocks = res.st_blocks;
-        uvres.st_blksize = res.st_blksize;
-        uvres.st_flags = 0;
-        uvres.st_gen = 0;
-#if defined(__APPLE__) || defined(__wasi__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-        uvres.st_atim = TIMESPEC(res.st_atimespec);
-        uvres.st_mtim = TIMESPEC(res.st_mtimespec);
-        uvres.st_ctim = TIMESPEC(res.st_ctimespec);
-#else
-        uvres.st_atim = TIMESPEC(res.st_atim);
-        uvres.st_mtim = TIMESPEC(res.st_mtim);
-        uvres.st_ctim = TIMESPEC(res.st_ctim);
-#endif
-        uvres.st_birthtim = uvres.st_ctim;
-    }
+    if (rc == 0) _uv_stat_result(req->statbuf, res);
+    return rc == 0 ? 0 : -errno;
+}
+
+int uv_fs_lstat(uv_loop_t* loop,
+                uv_fs_t* req,
+                const char* path,
+                uv_fs_cb cb) {
+    struct stat res;
+    int rc = lstat(path, &res);
+    if (rc == 0) _uv_stat_result(req->statbuf, res);
     return rc == 0 ? 0 : -errno;
 }
 
@@ -116,11 +128,6 @@ int uv_fs_link(uv_loop_t* loop,
                          const char* path,
                          const char* new_path,
                          uv_fs_cb cb) { STUB(); return -1; }
-
-int uv_fs_lstat(uv_loop_t* loop,
-                          uv_fs_t* req,
-                          const char* path,
-                          uv_fs_cb cb) { STUB(); return -1; }
 
 // exception launch pad stub
 #undef __wasm_lpad_context
