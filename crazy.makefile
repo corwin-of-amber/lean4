@@ -78,7 +78,7 @@ bin/lean: $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) lib/liblean.a
 
 bin/lake: $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) lib/liblean.a
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $< -Llib -llean $(LDFLAGS) -Wl,-dead_strip
+	clang++ -o $@ --std=c++20 $< -Llib -llean $(LDFLAGS)
 
 lib/liblean.a: $(OBJ)
 	@mkdir -p $(dir $@)
@@ -111,12 +111,18 @@ build-wasmer-fs:
 
 lib-init:
 	rm -rf tmp/init/build
-	( cd tmp/init && ../../bin/lake build --no-ansi -v Init:leanArts ) | tee tmp/lake-build-init.log
+	cd tmp/init && ../../bin/lake build Init
+
+lib-others:
+	cd tmp/init && ../../bin/lake build Std Lean Lake
 
 lib-init-fresh:
 	rm -rf tmp/init; mkdir -p tmp/init/src
 	cp crazy/init/lakefile.toml    tmp/init
 	cp -r src/Init.lean src/Init   tmp/init/src
+	cp -r src/Std.lean  src/Std    tmp/init/src
+	cp -r src/Lean.lean src/Lean   tmp/init/src
+	cp -r src/lake                 tmp/init/src
 	$(make-rec) lib-init
 
 WASMER_FLAGS = --stack-size=4000000
@@ -142,20 +148,33 @@ lib-lake-wasm: build-wasmer-fs
 	cp -r src/lake build-wasmer-fs/home/init/src
 	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lake
 
+# Location of lib build artifacts (either `/home/init` or `/usr/lib`)
+LIB_LEAN = ${wildcard \
+	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean}
+
 lib-init-wasm-tar:
 	mkdir -p lib
-	( cd build-wasmer-fs/home/init/build/lib/lean && \
-	  tar cf ${PWD}/lib/Init32.tar *.olean *.ir `find Init -name '*.olean' -o -name '*.ir'` )
+	( cd ${LIB_LEAN} && \
+	  tar cf ${PWD}/lib/Init.tar *.olean *.ir `find Init -name '*.olean' -o -name '*.ir'` )
 
-lib-std-wasm-tar:
-	mkdir -p lib
-	( cd build-wasmer-fs/home/init/build/lib/lean && \
-	  tar cf ${PWD}/lib/Std32.tar `find Std -name '*.olean' -o -name '*.ir'` )
+lib-wasm-tars:
+	$(make-rec) lib-init-wasm-tar
+	( cd ${LIB_LEAN}/Std && \
+	  tar cf ${PWD}/lib/Std.tar `find * -name '*.olean' -o -name '*.ir'`)
+	( cd ${LIB_LEAN}/Lean && \
+	  tar cf ${PWD}/lib/Lean.tar `find * -name '*.olean' -o -name '*.ir'`)
+	( cd ${LIB_LEAN}/Lake && \
+	  tar cf ${PWD}/lib/Lake.tar `find * -name '*.olean' -o -name '*.ir'`)
 
 lib-wasm-tar:  # huge file
 	mkdir -p lib
-	( cd build-wasmer-fs/home/init/build/lib/lean && \
-	  tar cf ${PWD}/lib/Lib32.tar `find * -name '*.olean' -o -name '*.ir'` )
+	( cd ${LIB_LEAN} && \
+	  tar cf ${PWD}/lib/lib32.tar `find * -name '*.olean' -o -name '*.ir'` )
+
+lib-wasm-extra-tar:  # extra huge file
+	mkdir -p lib
+	( cd ${LIB_LEAN} && \
+	  tar cf ${PWD}/lib/lib+extra32.tar `find * -name '*.olean.*'` )
 
 .PHONY: lib-init lib-init-%
 
