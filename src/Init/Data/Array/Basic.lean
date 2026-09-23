@@ -1194,6 +1194,15 @@ def zipIdx (xs : Array α) (start := 0) : Array (α × Nat) :=
   xs.mapIdx fun i a => (a, start + i)
 
 
+/-- needed for "real" tail recursion -/
+unsafe def findUnsafe (p : α → Bool) (as : Array α) : Option α :=
+  let rec loop (start := 0) (stop := as.size) :=
+    if h : start < as.size ∧ start < stop then
+      let v := as[start]'(h.left)
+      if p v then some v else loop (start + 1) stop
+    else
+      none
+  loop
 
 /--
 Returns the first element of the array for which the predicate `p` returns `true`, or `none` if no
@@ -1203,7 +1212,7 @@ Examples:
 * `#[7, 6, 5, 8, 1, 2, 6].find? (· < 5) = some 1`
 * `#[7, 6, 5, 8, 1, 2, 6].find? (· < 1) = none`
 -/
-@[inline, expose]
+@[inline, expose, implemented_by findUnsafe]
 def find? {α : Type u} (p : α → Bool) (as : Array α) : Option α :=
   Id.run do
     for a in as do
@@ -1388,6 +1397,13 @@ Examples:
 def idxOf? [BEq α] (xs : Array α) (v : α) : Option Nat :=
   (xs.finIdxOf? v).map (·.val)
 
+/-- needed for "real" tail recursion -/
+unsafe def anyUnsafe (as : Array α) (p : α → Bool) (start := 0) (stop := as.size) : Bool :=
+  if h : start < as.size ∧ start < stop then
+    if p (as[start]'(h.left)) then true else anyUnsafe as p (start + 1) stop
+  else
+    false
+
 /--
 Returns `true` if `p` returns `true` for any element of `as`.
 
@@ -1403,7 +1419,7 @@ Examples:
 * `#[2, 4, 5, 6].any (· % 2 = 0) = true`
 * `#[2, 4, 5, 6].any (· % 2 = 1) = true`
 -/
-@[inline, expose, suggest_for Array.some]
+@[inline, expose, suggest_for Array.some, implemented_by anyUnsafe]
 def any (as : Array α) (p : α → Bool) (start := 0) (stop := as.size) : Bool :=
   Id.run <| as.anyM (pure <| p ·) start stop
 
