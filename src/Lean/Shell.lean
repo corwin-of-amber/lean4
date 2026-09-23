@@ -571,7 +571,7 @@ def shellMain (args : List String) (opts : ShellOptions) : IO UInt32 := do
       profileitIO "LLVM code generation" opts.leanOpts do
         emitLLVM env mainModuleName bc
   displayCumulativeProfilingTimes
-  if Internal.hasAddressSanitizer () then
+  if Internal.hasAddressSanitizer () || Platform.getIsEmscripten () then
     return if env?.isSome then 0 else 1
   else
     -- When not using the address/leak sanitizer, we interrupt execution without garbage collecting.

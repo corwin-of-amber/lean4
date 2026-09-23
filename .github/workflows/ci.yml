@@ -364,6 +364,22 @@ jobs:
                 "CTEST_OPTIONS": "-j2 -E 'async_http_body|async_http_dispatch|async_http_encode|async_http_fuzz|async_http_response_framing|async_http_hang_regressions|task_iterators' -R '(compile/534)|(elab/(async.*|sync_.*|task.*|bv_bitwise|net_addr|networkInterfaces|openssl|idbg.*|Process|handleLocking|ioNulBytes|ioRandomBytes|libuv|readDir|realPath|st_test|stateRef|grind_list_count|vcgenSymBlock|doControlInfoAggregate))'"
               },
               {
+                "name": "Linux tsanitize",
+                "os": large ? "nscloud-ubuntu-24.04-amd64-32x64" : "ubuntu-latest",
+                // Disabled on this release branch. The job arrived with the #14161 backport, which
+                // was taken only so that #14838 would apply cleanly. `elab/grind_list_count` trips a
+                // data race in this branch's `grind` solver that master does not have, because that
+                // code was rewritten there rather than fixed.
+                "enabled": false,
+                "test": true,
+                // turn off custom allocator & symbolic functions to make TSAN do its magic
+                "CMAKE_PRESET": "sanitize-thread",
+                // We take a small subset of tests for tsan and run with reduced test parallelism.
+                // This is necessary as running tsan in parallel on all of our test suite would
+                // easily OOM the runner.
+                "CTEST_OPTIONS": "-j2 -E 'async_http_body|async_http_dispatch|async_http_encode|async_http_fuzz|async_http_response_framing|async_http_hang_regressions|task_iterators' -R '(compile/534)|(elab/(async.*|sync_.*|task.*|bv_bitwise|net_addr|networkInterfaces|openssl|idbg.*|Process|handleLocking|ioNulBytes|ioRandomBytes|libuv|readDir|realPath|st_test|stateRef|grind_list_count|vcgenSymBlock|doControlInfoAggregate))'"
+              },
+              {
                 "name": "macOS",
                 "os": "macos-15-intel",
                 "release": true,
