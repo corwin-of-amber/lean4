@@ -2084,11 +2084,13 @@ private def readModuleDataPartsOfMod (mod : Name) : IO (Array (ModuleData × Com
     return #[main]
   -- Opportunistically load all available parts.
   -- Necessary because the import level may be upgraded a later import.
-  let sFile := OLeanLevel.server.adjustFileName mFile
-  let server ← unsafe CompactedRegion.read (α := ModuleData) sFile #[main.2]
-  let pFile := OLeanLevel.private.adjustFileName mFile
-  let priv ← unsafe CompactedRegion.read (α := ModuleData) pFile #[main.2, server.2]
-  return #[main, server, priv]
+  try
+    let sFile := OLeanLevel.server.adjustFileName mFile
+    let server ← unsafe CompactedRegion.read (α := ModuleData) sFile #[main.2]
+    let pFile := OLeanLevel.private.adjustFileName mFile
+    let priv ← unsafe CompactedRegion.read (α := ModuleData) pFile #[main.2, server.2]
+    return #[main, server, priv]
+  catch _ => return #[main, main, main]
 
 private def readIRPartsOfMod (mod : Name) : IO (Array (ModuleData × CompactedRegion)) := do
   let mFile ← findOLean mod
