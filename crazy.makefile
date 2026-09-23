@@ -84,8 +84,11 @@ lib/liblean.a: $(OBJ)
 	@mkdir -p $(dir $@)
 	ar r $@ $+
 
+crazy/dyn.c:
+	npx tsx crazy/extract-native-exports.ts dyn > $@
 lib/export-symbols.txt:
-	npx tsx crazy/extract-native-exports.ts > $@
+	$(if $(filter dyn,$(DLSYM)),echo,\
+	npx tsx crazy/extract-native-exports.ts link) > $@
 lib/export-symbols-all.txt: lib/liblean.wa
 	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
 lib/liblean.wa:
@@ -149,27 +152,31 @@ lib-lake-wasm: build-wasmer-fs
 	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lake
 
 # Location of lib build artifacts (either `/home/init` or `/usr/lib`)
-LIB_LEAN = ${wildcard \
-	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean}
+LIB_LEAN = $(wildcard \
+	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean)
+
+LIB_LEAN_EXTS = .olean .ir .ir.sig
+pats = $(addprefix *, ${LIB_LEAN_EXTS})
+find_flags = $(subst $(E) -o @@,,$(foreach pat,$(pats),-name '$(pat)' -o) @@)
 
 lib-init-wasm-tar:
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
-	  tar cf ${PWD}/lib/Init.tar *.olean *.ir `find Init -name '*.olean' -o -name '*.ir'` )
+	  tar cf ${PWD}/lib/Init.tar ${pats} `find Init ${find_flags}` )
 
 lib-wasm-tars:
 	$(make-rec) lib-init-wasm-tar
 	( cd ${LIB_LEAN}/Std && \
-	  tar cf ${PWD}/lib/Std.tar `find * -name '*.olean' -o -name '*.ir'`)
+	  tar cf ${PWD}/lib/Std.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lean && \
-	  tar cf ${PWD}/lib/Lean.tar `find * -name '*.olean' -o -name '*.ir'`)
+	  tar cf ${PWD}/lib/Lean.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lake && \
-	  tar cf ${PWD}/lib/Lake.tar `find * -name '*.olean' -o -name '*.ir'`)
+	  tar cf ${PWD}/lib/Lake.tar `find * ${find_flags}`)
 
 lib-wasm-tar:  # huge file
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
-	  tar cf ${PWD}/lib/lib32.tar `find * -name '*.olean' -o -name '*.ir'` )
+	  tar cf ${PWD}/lib/lib32.tar `find * ${find_flags}` )
 
 lib-wasm-extra-tar:  # extra huge file
 	mkdir -p lib

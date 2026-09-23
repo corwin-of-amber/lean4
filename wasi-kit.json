@@ -11,9 +11,8 @@
     },
     "presets": {
         "exe": {
-            "noargs": ["-lgmp", "-luv"],
+            "noargs": ["-rdynamic"],
             "args": [
-                "--target=wasm32-wasi",
                 "-fwasm-exceptions", "-Wl,--export=__cpp_exception", "-Wl,-pie",
                 "-Wl,-allow-undefined", "-Wl,--allow-multiple-definition",
                 "-fPIC", "-lunwind"],

@@ -40,9 +40,15 @@ async function shrinkwrap(dir: string) {
             name: pkg.name,
             manifestFile: pkg.manifestFile,
             inherited: pkg.inherited,
-            dir: path.join(pkgDir, pkg.name, pkg.subdir ?? ''),
+            dir: path.join(pkgDir, pkg.name, pkg.subDir ?? ''),
             configFile: pkg.configFile
         };
+
+    let checkPath = (fp: string, pkg: any) => {
+        if (pkg.dir && !isDir(path.join(path.dirname(fp), pkg.dir)))
+            console.warn(`(in ${fp}) package directory '${pkg.dir}' is missing`);
+        return pkg;
+    }
 
     let withToml = (pkg: any) => ({...pkg, configFile: 'lakefile.toml'});
 
@@ -52,8 +58,8 @@ async function shrinkwrap(dir: string) {
             pkgDir = path.relative(path.dirname(fn), rootPkgDir);
 
         if (manifest.packages) {
-            manifest.packages = manifest.packages
-                .map((pkg: any) => toPathType(pkgDir, withToml(pkg)));
+            manifest.packages = manifest.packages.map((pkg: any) =>
+                checkPath(fp, toPathType(pkgDir, withToml(pkg))));
             fs.writeFileSync(fp, JSON.stringify(manifest, null, 1));
         }
     }
@@ -64,7 +70,7 @@ async function packBuiltArtifacts(dir: string) {
         (await fs.readdir(dir, {recursive: true, encoding: 'utf-8'}))
         .filter(fn => fn.endsWith('/build/lib/lean'));
 
-    let stagingDir = '/tmp/bob-staging', exts = ['.olean', '.ir'],
+    let stagingDir = '/tmp/bob-staging', exts = ['.olean', '.ir', '.ir.sig'],
         outFn = 'bob.tar';
     fs.emptyDirSync(stagingDir);
     fs.mkdirSync(stagingDir, {recursive: true});
