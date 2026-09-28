@@ -163,22 +163,33 @@ function extractAsCTable(out: any, max: number) {
         out.write(`extern ${it.sig} __attribute__((weak_import));\n`);
     }
 
-    let crc = makeCrc(32, 0x629F6FBF), ctbl = new Set<number>();
+    process.stderr.write(`[info] # symbols: ${tbl.size}\n`);
 
-    out.write(`\n\nstruct entry { uint32_t k; void *p; };\n`)
-    out.write(`\nLEAN_EXPORT struct entry __dyn_table[] = {\n    `)
+    let crc = makeCrc(32, 0x629F6FBF), ctbl = new Set<number>();
+    const numBuckets = 128;
+
+    let buckets: string[][] = Array.from({length: numBuckets}, () => []);
     for (let nm of tbl) {
         let k = crc.ascii(nm);
         ctbl.add(k);
-        out.write(`{0x${k.toString(16)}, &${nm}},`);
+        buckets[k % numBuckets].push(`{0x${k.toString(16)}, &${nm}},`);
     }
-    out.write(`\n     {0, 0}\n};\n`);
-
-    process.stderr.write(`[info] # symbols: ${tbl.size}\n`);
 
     // Sanity
     if (ctbl.size != tbl.size)
         throw new Error("CRC collision");
+
+    out.write(`\n\nstruct entry { uint32_t k; void *p; };\n    `)
+    for (let i = 0; i < buckets.length; i++) {
+        out.write(`\nstruct entry __dyn_table_${i}[] = {\n`);
+        for (let entry of buckets[i]) out.write(entry);
+        out.write(`\n     {0, 0}\n};\n`);
+    }
+
+    out.write(`\nLEAN_EXPORT struct entry *__dyn_table[] = {\n    `)
+    out.write(buckets.map((_, i) => `__dyn_table_${i}`).join(', '));
+    out.write(`\n};\n`);
+
 }
 
 /** set former from iterator */

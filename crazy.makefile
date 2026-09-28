@@ -40,7 +40,7 @@ endif
 # This is a special build mode that uses a C array as a table for
 # native symbol lookup (see `ir_interpreter.cpp`).
 ifeq ($(DLSYM),dyn)
-SRC_C += crazy/dyn.c crazy/dyntable/crc.c
+SRC_C += lib/dyn.c crazy/dyntable/crc.c
 SRC_CPP += crazy/dyntable/dlsym_dyn.cpp
 MODIFIERS += -DAMBER_DL_DYNTABLE
 endif
@@ -84,7 +84,7 @@ lib/liblean.a: $(OBJ)
 	@mkdir -p $(dir $@)
 	ar r $@ $+
 
-crazy/dyn.c:
+lib/dyn.c:
 	npx tsx crazy/extract-native-exports.ts dyn > $@
 lib/export-symbols.txt:
 	$(if $(filter dyn,$(DLSYM)),echo,\
