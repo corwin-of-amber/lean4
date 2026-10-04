@@ -22,11 +22,11 @@ async function translateConfigs(dir: string) {
     for (let fn of lakefiles) {
         let subdir = path.dirname(path.resolve(dir, fn));
         console.log(subdir);
-        runCommand(lake, ["translate-config", "toml"], {cwd: subdir});
+        await runCommand(lake, ["translate-config", "toml"], {cwd: subdir});
     }
 }
 
-async function shrinkwrap(dir: string) {
+async function shrinkwrap(dir: string, toml = false) {
     let manifests =
         (await fs.readdir(dir, {recursive: true, encoding: 'utf-8'}))
         .filter(fn => path.basename(fn) == 'lake-manifest.json');
@@ -59,7 +59,7 @@ async function shrinkwrap(dir: string) {
 
         if (manifest.packages) {
             manifest.packages = manifest.packages.map((pkg: any) =>
-                checkPath(fp, toPathType(pkgDir, withToml(pkg))));
+                checkPath(fp, toPathType(pkgDir, toml ? withToml(pkg) : pkg)));
             fs.writeFileSync(fp, JSON.stringify(manifest, null, 1));
         }
     }
@@ -136,6 +136,7 @@ async function main() {
       .option('-k, --continue', 'continue from previous build (do not copy source)')
       .option('-d, --subdir <DIR>', 'build subdirectory (if not at root)')
       .option('-t, --destdir <DIR>', 'where to place files within the Wasmer FS')
+      .option('--force-toml', 'translate configs to `toml` format before build')
       .parse();
 
     let [srcdir, target] = program.args, o = program.opts(),
@@ -156,9 +157,10 @@ async function main() {
     let builddir = o.subdir ? path.join(destdir, o.subdir) : destdir,
         buildvol = path.join(WASMER.volume, builddir);
 
-    await translateConfigs(destvol);
+    if (o.forceToml)
+        await translateConfigs(destvol);
 
-    await shrinkwrap(buildvol);
+    await shrinkwrap(buildvol, o.forceToml);
 
     await runWasmer(builddir, 'bin/lake.wasm', ['build', target+':leanArts'])
 
