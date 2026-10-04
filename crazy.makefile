@@ -65,6 +65,8 @@ CFLAGS += -Oz -DLEAN_BUILD_TYPE="Release" -DNDEBUG
 # For comparison: these are the full flags used by the cmake build
 #CFLAGS = -I/opt/homebrew/Cellar/libuv/1.52.1/include -I/Users/corwin/var/ext/lean4/build/debug/stage0/include -I/Users/corwin/var/ext/lean4/stage0/src -I/Users/corwin/var/ext/lean4/build/debug/stage0 -D LEAN_USE_GMP   -D LEAN_MMAP -D LEAN_MULTI_THREAD -DLEAN_BUILD_TYPE="Release" -DLEAN_EXPORTING -D__CLANG__ -ftls-model=initial-exec -fvisibility=hidden -fvisibility-inlines-hidden -O3 -DNDEBUG -arch arm64
 
+TSX = crazy/node_modules/.bin/tsx
+
 make-rec = $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 
 
@@ -76,6 +78,9 @@ bin/lean: $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) lib/liblean.a
 	@mkdir -p $(dir $@)
 	clang++ -o $@ --std=c++20 $+ $(LDFLAGS)
 
+	@if [ -e bin/lean.wasm ] && [ -e build-wasmer-fs/usr/bin/lean ] ; then \
+	  cp bin/lean.wasm build-wasmer-fs/usr/bin/lean ; fi    # this is easy to forget and it bites
+
 bin/lake: $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) lib/liblean.a
 	@mkdir -p $(dir $@)
 	clang++ -o $@ --std=c++20 $< -Llib -llean $(LDFLAGS)
@@ -85,11 +90,14 @@ lib/liblean.a: $(OBJ)
 	ar r $@ $+
 
 lib/dyn.c:
-	npx tsx crazy/extract-native-exports.ts dyn > $@
+	@mkdir -p $(dir $@)
+	$(TSX) crazy/extract-native-exports.ts dyn > $@
 lib/export-symbols.txt:
+	@mkdir -p $(dir $@)
 	$(if $(filter dyn,$(DLSYM)),echo,\
-	npx tsx crazy/extract-native-exports.ts link) > $@
+	$(TSX) crazy/extract-native-exports.ts link) > $@
 lib/export-symbols-all.txt: lib/liblean.wa
+	@mkdir -p $(dir $@)
 	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
 lib/liblean.wa:
 
@@ -115,6 +123,7 @@ build-wasmer-fs:
 lib-init:
 	rm -rf tmp/init/build
 	cd tmp/init && ../../bin/lake build Init
+	cd lib && ln -s ../tmp/init/build/lib/lean .
 
 lib-others:
 	cd tmp/init && ../../bin/lake build Std Lean Lake
@@ -145,6 +154,8 @@ lib-std-wasm: build-wasmer-fs
 
 lib-lean-wasm: build-wasmer-fs
 	cp -r src/Lean.lean src/Lean build-wasmer-fs/home/init/src
+	# splitting to two phases helps avoid crashes during CI...
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build +Lean.Meta
 	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lean
 
 lib-lake-wasm: build-wasmer-fs
@@ -182,6 +193,10 @@ lib-wasm-extra-tar:  # extra huge file
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
 	  tar cf ${PWD}/lib/lib+extra32.tar `find * -name '*.olean.*'` )
+
+lib-wasm-install:
+	mkdir -p build-wasmer-fs/usr/lib
+	cp -r build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib
 
 .PHONY: lib-init lib-init-%
 
