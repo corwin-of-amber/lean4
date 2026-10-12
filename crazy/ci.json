@@ -1,0 +1,87 @@
+{
+    "scripts": {
+        "(probe)": [
+            "env"
+        ],
+        "dependencies": {
+            "wasi-sdk": [
+                "mkdir -p /tmp/wasi-sdk",
+                "cd /tmp/wasi-sdk",
+                "wget -O- --progress=bar:force:noscroll https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz | tar zxf -",
+                "mv wasi-sdk-33.0-x86_64-linux /opt/wasi-sdk-33",
+                "wget -O- --progress=bar:force:noscroll https://github.com/wasix-org/wasix-libc/releases/download/v2026-10-02.1/sysroot-exnref-ehpic.tar.gz | tar zxf -",
+                "mkdir -p /opt/wasix-libc-2026",
+                "mv wasix-sysroot-exnref-ehpic /opt/wasix-libc-2026/exnref-ehpic"
+            ],
+            "rustup": [
+                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+            ],
+            "wasm-pack": [
+                "cargo install wasm-pack"
+            ],
+            "wasm-opt": [
+                "npm i -g binaryen"
+            ]
+        },
+        "wasik": {
+            ".": ["mkdir -p wasi-kernel", "cd wasi-kernel"],
+            "download": [
+                "git clone --depth 1 https://github.com/corwin-of-amber/wasi-kernel.git .",
+                "git submodule update --init --depth 1"
+            ],
+            "build": {
+                "wasmer-js": [
+                    "cd packages/wasmer-js",
+                    "npm i",
+                    "npm run build"
+                ],
+                "wasi-kernel": [
+                    "npm i",
+                    "npm run build"
+                ]
+            }
+        },
+        "lean": {
+            ".": [
+                "LEAN_REPO=https://github.com/corwin-of-amber/lean4.git",
+                "LEAN_BRANCH=crazy-4.34.0",
+                "WASI_SDK=/opt/wasi-sdk-33",
+                "WASIX_LIBC=/opt/wasix-libc-2026/exnref-ehpic",
+                "J=80",
+                "mkdir -p lean4", "cd lean4"
+            ],
+            "get": [
+                "git clone --depth 1 $LEAN_REPO -b $LEAN_BRANCH ."
+            ],
+            "build": {
+                "native": [
+                    "cmake --preset release",
+                    "make -C build/release -j$J"
+                ],
+                "wasm": [
+                    "cd crazy", "npm i", "cd ..",
+                    "wasi-kit make -f crazy.makefile DLSYM=dyn -j$J"
+                ],
+                "wasm-lib": [
+                    "make -f crazy.makefile lib-init-wasm",
+                    "make -f crazy.makefile lib-std-wasm",
+                    "make -f crazy.makefile lib-lean-wasm",
+                    "make -f crazy.makefile lib-lake-wasm",
+                    "make -f crazy.makefile lib-wasm-tars",
+                    "make -f crazy.makefile lib-wasm-install"
+                ]
+            },
+            "test": {
+                ".": ["cd .."],
+                "scribble": [
+                    "git clone --depth 1 git@github.com:corwin-of-amber/Robo.git scribble",
+                    "cd scribble",
+                      "../lean4/build/release/stage1/bin/lake build --packages=package-overrides.json --no-build",
+                    "cd ..",
+                    "cd lean4",
+                    "npx tsx crazy/builder.ts ../scribble Game"
+                ]
+            }
+        }
+    }
+}
