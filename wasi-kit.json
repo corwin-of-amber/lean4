@@ -27,7 +27,10 @@
     "bin/lake": {
         "output": "bin/lake.wasm",
         "preset": "exe",
-        "noargs": [["..."], "-llean", "-Wl,-dead_strip"],
-        "args": [["..."], "lib/liblean.wa"]
+        "noargs": [["..."], "-Wl,-dead_strip"]
+    },
+    "bin/mimalloc-probe": {
+        "output": "bin/mimalloc-probe.wasm",
+        "preset": "exe"
     }
 }

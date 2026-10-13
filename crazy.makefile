@@ -23,7 +23,13 @@ INC += -Icrazy -Icrazy/include
 MAINS = LeanIR.c LeanChecker.c LakeMain.c Leanc.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
-OBJ_DIR = obj
+OPT ?= Oz
+MIMALLOC ?= 0
+MIMALLOC_DIR ?= build/release/mimalloc/src/mimalloc
+BUILD_SUFFIX = $(if $(filter Oz,$(OPT)),,-$(OPT))$(if $(filter 1,$(MIMALLOC)),-mimalloc,)
+OBJ_DIR = obj$(BUILD_SUFFIX)
+LEAN_ARCHIVE = lib/liblean$(BUILD_SUFFIX).a
+BUILD_MODE = obj/.crazy-build-mode
 
 SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)} crazy/stubs.cpp
 SRC_C = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLC)}
@@ -33,6 +39,15 @@ MODIFIERS += -DLEAN_EMSCRIPTEN
 MODIFIERS += -DAMBER -DLEAN_USE_POSIX_SPAWN -DLEAN_DEFAULT_INTERPRETER_PREFER_NATIVE=false
 ifeq ($(STAGE),0)
 MODIFIERS += -DLEAN_IS_STAGE0
+endif
+
+
+ifeq ($(MIMALLOC),1)
+SRC_CPP += crazy/mimalloc.cpp
+MODIFIERS += -DLEAN_MIMALLOC
+INC += -I$(OBJ_DIR)/include -I$(MIMALLOC_DIR)/include -I$(MIMALLOC_DIR)/src
+MIMALLOC_HEADER = $(OBJ_DIR)/include/lean/mimalloc.h
+MIMALLOC_DEPS := $(shell find $(MIMALLOC_DIR)/src $(MIMALLOC_DIR)/include -type f 2>/dev/null)
 endif
 
 #MODIFIERS += -DLEAN_USE_GMP
@@ -60,7 +75,7 @@ endif
 # dbg
 #CFLAGS += -g -DLEAN_DEBUG
 # opt
-CFLAGS += -Oz -DLEAN_BUILD_TYPE="Release" -DNDEBUG
+CFLAGS += -$(OPT) -DLEAN_BUILD_TYPE="Release" -DNDEBUG
 
 # For comparison: these are the full flags used by the cmake build
 #CFLAGS = -I/opt/homebrew/Cellar/libuv/1.52.1/include -I/Users/corwin/var/ext/lean4/build/debug/stage0/include -I/Users/corwin/var/ext/lean4/stage0/src -I/Users/corwin/var/ext/lean4/build/debug/stage0 -D LEAN_USE_GMP   -D LEAN_MMAP -D LEAN_MULTI_THREAD -DLEAN_BUILD_TYPE="Release" -DLEAN_EXPORTING -D__CLANG__ -ftls-model=initial-exec -fvisibility=hidden -fvisibility-inlines-hidden -O3 -DNDEBUG -arch arm64
@@ -73,21 +88,52 @@ make-rec = $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 both: bin/lean bin/lake
 .PHONY: both
 
-bin/lean: $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) lib/liblean.a
+bin/lean: $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	-@$(make-rec) lib/export-symbols.txt
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $+ $(LDFLAGS)
+	clang++ -o $@ --std=c++20 $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(LDFLAGS)
 
 	@if [ -e bin/lean.wasm ] && [ -e build-wasmer-fs/usr/bin/lean ] ; then \
 	  cp bin/lean.wasm build-wasmer-fs/usr/bin/lean ; fi    # this is easy to forget and it bites
 
-bin/lake: $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) lib/liblean.a
+bin/lake: $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $< -Llib -llean $(LDFLAGS)
+	clang++ -o $@ --std=c++20 $< $(LEAN_ARCHIVE) $(LDFLAGS)
 
-lib/liblean.a: $(OBJ)
+$(LEAN_ARCHIVE): $(OBJ)
 	@mkdir -p $(dir $@)
 	ar r $@ $+
+
+# The executable paths are shared, while objects and archives are per variant.
+$(BUILD_MODE): FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(BUILD_SUFFIX):$(MIMALLOC_DIR)' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+.PHONY: FORCE
+FORCE:
+
+ifeq ($(MIMALLOC),1)
+$(MIMALLOC_HEADER): $(MIMALLOC_DIR)/include/mimalloc.h
+	@mkdir -p $(dir $@)
+	cp $< $@
+
+$(OBJ) $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o) $(SRC_LAKE_C:.c=.o)): $(MIMALLOC_HEADER)
+$(OBJ_DIR)/crazy/mimalloc.o: $(MIMALLOC_DEPS)
+$(OBJ_DIR)/crazy/mimalloc.o: CFLAGS += -DMI_DEBUG=0 -DMI_SECURE=0 -DMI_USE_PTHREADS=1 -DMI_TLS_MODEL_LOCAL=1
+
+bin/mimalloc-probe: $(OBJ_DIR)/tests/wasm/mimalloc.o $(OBJ_DIR)/crazy/mimalloc.o $(BUILD_MODE)
+	@mkdir -p $(dir $@)
+	clang++ -o $@ --std=c++20 $(filter %.o,$^) $(LDFLAGS)
+
+test-mimalloc: bin/mimalloc-probe
+	wasmer run --stack-size=4000000 bin/mimalloc-probe.wasm
+else
+test-mimalloc:
+	@echo 'Pass MIMALLOC=1 to run the allocator probe.' >&2
+	@exit 2
+endif
+.PHONY: test-mimalloc
 
 lib/dyn.c:
 	@mkdir -p $(dir $@)
@@ -96,10 +142,10 @@ lib/export-symbols.txt:
 	@mkdir -p $(dir $@)
 	$(if $(filter dyn,$(DLSYM)),echo,\
 	$(TSX) crazy/extract-native-exports.ts link) > $@
-lib/export-symbols-all.txt: lib/liblean.wa
+lib/export-symbols-all.txt: $(LEAN_ARCHIVE:.a=.wa)
 	@mkdir -p $(dir $@)
 	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
-lib/liblean.wa:
+$(LEAN_ARCHIVE:.a=.wa):
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
