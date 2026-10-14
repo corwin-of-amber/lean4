@@ -24,10 +24,10 @@ MAINS = LeanIR.c LeanChecker.c LakeMain.c Leanc.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
 OPT ?= Oz
-MIMALLOC ?= 0
+DLSYM ?= dyn
+MIMALLOC ?= 1
 MIMALLOC_DIR ?= build/release/mimalloc/src/mimalloc
 BUILD_SUFFIX = $(if $(filter Oz,$(OPT)),,-$(OPT))$(if $(filter 1,$(MIMALLOC)),-mimalloc,)
-OBJ_DIR = obj$(BUILD_SUFFIX)
 LEAN_ARCHIVE = lib/liblean$(BUILD_SUFFIX).a
 BUILD_MODE = obj/.crazy-build-mode
 
@@ -41,16 +41,17 @@ ifeq ($(STAGE),0)
 MODIFIERS += -DLEAN_IS_STAGE0
 endif
 
+#MODIFIERS += -DLEAN_USE_GMP
 
 ifeq ($(MIMALLOC),1)
-SRC_CPP += crazy/mimalloc.cpp
 MODIFIERS += -DLEAN_MIMALLOC
-INC += -I$(OBJ_DIR)/include -I$(MIMALLOC_DIR)/include -I$(MIMALLOC_DIR)/src
-MIMALLOC_HEADER = $(OBJ_DIR)/include/lean/mimalloc.h
+SRC_C += build/release/mimalloc/src/mimalloc/src/static.c
+INC += -I$(MIMALLOC_DIR)/include -I$(MIMALLOC_DIR)/src
 MIMALLOC_DEPS := $(shell find $(MIMALLOC_DIR)/src $(MIMALLOC_DIR)/include -type f 2>/dev/null)
-endif
 
-#MODIFIERS += -DLEAN_USE_GMP
+obj/%/mimalloc/src/static.o: $(MIMALLOC_DEPS)
+obj/%/mimalloc/src/static.o: CFLAGS += -include pthread.h -DMI_DEBUG=0 -DMI_SECURE=0 -DMI_USE_PTHREADS=1 -DMI_TLS_MODEL_LOCAL=1
+endif
 
 # This is a special build mode that uses a C array as a table for
 # native symbol lookup (see `ir_interpreter.cpp`).
@@ -61,7 +62,7 @@ MODIFIERS += -DAMBER_DL_DYNTABLE
 endif
 
 
-OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
+OBJ = $(addprefix obj/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
 
 CFLAGS = $(MODIFIERS) $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
@@ -88,15 +89,15 @@ make-rec = $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 both: bin/lean bin/lake
 .PHONY: both
 
-bin/lean: $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
+bin/lean: $(addprefix obj/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	-@$(make-rec) lib/export-symbols.txt
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(LDFLAGS)
+	clang++ -o $@ --std=c++20 $(addprefix obj/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(LDFLAGS)
 
 	@if [ -e bin/lean.wasm ] && [ -e build-wasmer-fs/usr/bin/lean ] ; then \
 	  cp bin/lean.wasm build-wasmer-fs/usr/bin/lean ; fi    # this is easy to forget and it bites
 
-bin/lake: $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
+bin/lake: $(addprefix obj/,$(SRC_LAKE_C:.c=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	@mkdir -p $(dir $@)
 	clang++ -o $@ --std=c++20 $< $(LEAN_ARCHIVE) $(LDFLAGS)
 
@@ -114,15 +115,7 @@ $(BUILD_MODE): FORCE
 FORCE:
 
 ifeq ($(MIMALLOC),1)
-$(MIMALLOC_HEADER): $(MIMALLOC_DIR)/include/mimalloc.h
-	@mkdir -p $(dir $@)
-	cp $< $@
-
-$(OBJ) $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o) $(SRC_LAKE_C:.c=.o)): $(MIMALLOC_HEADER)
-$(OBJ_DIR)/crazy/mimalloc.o: $(MIMALLOC_DEPS)
-$(OBJ_DIR)/crazy/mimalloc.o: CFLAGS += -DMI_DEBUG=0 -DMI_SECURE=0 -DMI_USE_PTHREADS=1 -DMI_TLS_MODEL_LOCAL=1
-
-bin/mimalloc-probe: $(OBJ_DIR)/tests/wasm/mimalloc.o $(OBJ_DIR)/crazy/mimalloc.o $(BUILD_MODE)
+bin/mimalloc-probe: obj/tests/wasm/mimalloc.o obj/crazy/mimalloc.o $(BUILD_MODE)
 	@mkdir -p $(dir $@)
 	clang++ -o $@ --std=c++20 $(filter %.o,$^) $(LDFLAGS)
 
@@ -130,7 +123,7 @@ test-mimalloc: bin/mimalloc-probe
 	wasmer run --stack-size=4000000 bin/mimalloc-probe.wasm
 else
 test-mimalloc:
-	@echo 'Pass MIMALLOC=1 to run the allocator probe.' >&2
+	@echo 'Set MIMALLOC=1 to run the allocator probe.' >&2
 	@exit 2
 endif
 .PHONY: test-mimalloc
@@ -147,10 +140,10 @@ lib/export-symbols-all.txt: $(LEAN_ARCHIVE:.a=.wa)
 	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
 $(LEAN_ARCHIVE:.a=.wa):
 
-$(OBJ_DIR)/%.o: %.cpp
+obj/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	clang++ --std=c++20 -c $< -o $@ $(CFLAGS)
-$(OBJ_DIR)/%.o: %.c
+obj/%.o: %.c
 	@mkdir -p $(dir $@)
 	clang -c $< -o $@ $(CFLAGS)
 
