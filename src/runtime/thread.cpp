@@ -53,6 +53,9 @@ void reset_thread_local() {
 using runnable = std::function<void()>;
 
 extern "C" LEAN_EXPORT void lean_initialize_thread() {
+#ifdef __wasi__
+    std::set_terminate([]() { std::_Exit(9); });
+#endif
 }
 
 extern "C" LEAN_EXPORT void lean_finalize_thread() {
