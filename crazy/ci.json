@@ -79,7 +79,21 @@
                       "../lean4/build/release/stage1/bin/lake build --packages=package-overrides.json --no-build",
                     "cd ..",
                     "cd lean4",
-                    "npx tsx crazy/builder.ts ../scribble Game"
+                    "npx tsx crazy/builder.ts ../scribble Game -k",
+                    "mv bob.tar ../scribble/scribble-build.tar",
+                    "cd build-wasmer-fs/home/scribble",
+                      "tar cf ../../../../scribble/scribble-build-gamedata.tar --exclude images .i18n .lake/gamedata"
+                ],
+                "lean-mirror-minimal": [
+                    "WASIK=/tmp/mannequin/wasi-kernel",
+                    "LEAN_WORKDIR=/tmp/mannequin/lean4",
+                    "SCRIBBLE_WORKDIR=/tmp/mannequin/scribble",
+                    "git clone --depth 1 --recursive git@github.com:corwin-of-amber/lean-mirror.git lean-mirror",
+                    "cd lean-mirror",
+                    "npm install", "npm run build",
+                    "cd packages/editor-platform", "npm run build", "cd ../..",
+                    "cd examples/minimal-wasik",
+                    "./webhack.sh"
                 ]
             }
         }
