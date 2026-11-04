@@ -61,14 +61,20 @@ export async function packBuiltArtifacts(dir: string, output = 'bob.tar') {
     await fs.ensureDir(path.dirname(outputPath));
     const stagingDir = await fs.mkdtemp(path.join(path.dirname(outputPath), '.bob-'));
     const extensions = ['.olean', '.olean.server', '.olean.private', '.ir', '.ir.sig'];
+    let artifactCount = 0;
     try {
         for (const directory of buildDirs) {
             await fs.copy(path.join(dir, directory), stagingDir, {
-                filter: source => isDir(source) || extensions.some(extension => source.endsWith(extension))
+                filter: source => {
+                    if (isDir(source)) return true;
+                    if (!extensions.some(extension => source.endsWith(extension))) return false;
+                    artifactCount++;
+                    return true;
+                }
             });
         }
         const files = await fs.readdir(stagingDir);
-        if (files.length === 0) throw new Error('No Lean artifacts to package');
+        if (artifactCount === 0) throw new Error('No Lean artifacts to package');
         await runCommand('tar', ['cf', path.join(stagingDir, 'archive.tar'), '-C', stagingDir, ...files]);
         await fs.rename(path.join(stagingDir, 'archive.tar'), outputPath);
         return outputPath;

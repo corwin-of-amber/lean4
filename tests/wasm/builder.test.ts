@@ -33,7 +33,7 @@ test('packaging includes metadata and cleans unique staging directories on succe
             packBuiltArtifacts(path.join(root, 'project'), path.join(root, 'b.tar'))]);
         const entries = execFileSync('tar', ['tf', path.join(root, 'a.tar')], {encoding: 'utf8'});
         assert.match(entries, /A.olean.server/); assert.match(entries, /A.olean.private/);
-        await fs.mkdir(path.join(root, 'empty'));
+        await fs.mkdir(path.join(root, 'empty/.lake/build/lib/lean/OnlyDirectories'), {recursive: true});
         await assert.rejects(packBuiltArtifacts(path.join(root, 'empty'), path.join(root, 'a.tar')), /No Lean artifacts/);
         assert.equal((await fs.readdir(root)).filter(name => name.startsWith('.bob-')).length, 0);
         assert.equal(execFileSync('tar', ['tf', path.join(root, 'a.tar')], {encoding: 'utf8'}), entries);
