@@ -249,8 +249,8 @@ lib-lake-wasm: build-wasmer-fs
 	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build Lake
 
 # Location of lib build artifacts (either `/home/init` or `/usr/lib`)
-LIB_LEAN = $(wildcard \
-	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean)
+LIB_LEAN = $(firstword $(wildcard \
+	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean))
 
 LIB_LEAN_EXTS = .olean .olean.server .olean.private .ir .ir.sig
 pats = $(addprefix *, ${LIB_LEAN_EXTS})
@@ -259,28 +259,28 @@ find_flags = $(subst $(E) -o @@,,$(foreach pat,$(pats),-name '$(pat)' -o) @@)
 lib-init-wasm-tar:
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
-	  tar cf ${PWD}/lib/Init.tar ${pats} `find Init ${find_flags}` )
+	  tar cf $(CURDIR)/lib/Init.tar ${pats} `find Init ${find_flags}` )
 
 lib-wasm-tars:
 	$(make-rec) lib-init-wasm-tar
 	( cd ${LIB_LEAN}/Std && \
-	  tar cf ${PWD}/lib/Std.tar `find * ${find_flags}`)
+	  tar cf $(CURDIR)/lib/Std.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lean && \
-	  tar cf ${PWD}/lib/Lean.tar `find * ${find_flags}`)
+	  tar cf $(CURDIR)/lib/Lean.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/LeanExport && \
-	  tar cf ${PWD}/lib/LeanExport.tar `find * ${find_flags}`)
+	  tar cf $(CURDIR)/lib/LeanExport.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lake && \
-	  tar cf ${PWD}/lib/Lake.tar `find * ${find_flags}`)
+	  tar cf $(CURDIR)/lib/Lake.tar `find * ${find_flags}`)
 
 lib-wasm-tar:  # huge file
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
-	  tar cf ${PWD}/lib/lib32.tar `find * ${find_flags}` )
+	  tar cf $(CURDIR)/lib/lib32.tar `find * ${find_flags}` )
 
 lib-wasm-extra-tar:  # extra huge file
 	mkdir -p lib
 	( cd ${LIB_LEAN} && \
-	  tar cf ${PWD}/lib/lib+extra32.tar `find * -name '*.olean.*'` )
+	  tar cf $(CURDIR)/lib/lib+extra32.tar `find * -name '*.olean.*'` )
 
 lib-wasm-install:
 	mkdir -p build-wasmer-fs/usr/lib

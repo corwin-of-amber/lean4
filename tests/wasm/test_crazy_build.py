@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -97,3 +98,23 @@ with tempfile.TemporaryDirectory(prefix='crazy-build-', dir=os.environ.get('TMPD
     assert len([call for call in relocated if '-c' in call]) >= 4
     assert not build('MIMALLOC=1', 'DLSYM=none', 'MIMALLOC_DIR=alternate-mimalloc')
     print('crazy build checks passed: backend, stage, flags, allocator source, optimization, symbol lookup and incremental reuse')
+
+    # An installed library tree must not turn `cd` into a two-directory command.
+    library = root / 'build-wasmer-fs/home/init/build/lib/lean'
+    installed = root / 'build-wasmer-fs/usr/lib/lean'
+    installed.mkdir(parents=True)
+    (installed / 'stale.olean').touch()
+    extensions = ['.olean', '.olean.server', '.olean.private', '.ir', '.ir.sig']
+    for name in ['Init', 'Std', 'Lean', 'LeanExport', 'Lake']:
+        directory = library / name
+        directory.mkdir(parents=True)
+        for extension in extensions:
+            (directory / ('Probe' + extension)).touch()
+    for extension in extensions:
+        (library / ('Init' + extension)).touch()
+    subprocess.run(['make', '-f', 'crazy.makefile', 'lib-wasm-tars'], cwd=root,
+                   env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    for name in ['Std', 'Lean', 'LeanExport', 'Lake']:
+        with tarfile.open(root / f'lib/{name}.tar') as archive:
+            assert set(archive.getnames()) == {'Probe' + extension for extension in extensions}
+    print('library packaging selects one tree and preserves module metadata')
