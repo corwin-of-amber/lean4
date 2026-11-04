@@ -74,6 +74,8 @@ After building and installing the libraries, run the guest API regression:
 wasmer run --stack-size=16000000 --volume build-wasmer-fs/usr:/usr --volume build-wasmer-fs/home:/home --volume tests/wasm:/tests bin/lean.wasm -- --run /tests/ProcessSpawn.lean
 ```
 
+Run `python3 tests/wasm/lsp.py` to check LSP file-worker startup, diagnostics, and graceful shutdown. The watchdog disables process sessions on Wasm targets and kills the worker by PID.
+
 The host POSIX-spawn test uses Linux `/proc/self/fd` to check failure-path
 ownership. The Wasm backend preserves arguments, environment inheritance and
 updates, working directories, stream redirections, and effective `PATH` lookup. Separate sessions are
