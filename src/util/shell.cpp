@@ -214,7 +214,7 @@ int run_shell_main(int argc, char* argv[], object_ref const & shell_opts) {
         argc--;
         args = list_ref<string_ref>(string_ref(argv[argc]), args);
     }
-    return get_io_scalar_result<uint32>(lean_shell_main(
+    return get_io_uint32_result(lean_shell_main(
         args.steal(),
         shell_opts.to_obj_arg()
     ));
