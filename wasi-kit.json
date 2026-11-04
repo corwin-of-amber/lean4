@@ -2,7 +2,7 @@
     "": {
         "dependencies": {
             "wasi-sdk": "33",
-            "wasix-libc": "2026-06-11:exnref-ehpic"
+            "wasix-libc": "2026-10-02.1:exnref-ehpic"
         }
     },
     "wasix": true,
