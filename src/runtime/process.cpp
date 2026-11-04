@@ -4,6 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 
 Author: Jared Roesch
 */
+#if defined(LEAN_USE_POSIX_SPAWN) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -32,6 +35,10 @@ Author: Jared Roesch
 #include <sys/syscall.h>
 #endif
 
+#include "runtime/process.h"
+#ifdef LEAN_USE_POSIX_SPAWN
+#include "runtime/posix_spawn.h"
+#endif
 #include "runtime/object.h"
 #include "runtime/io.h"
 #include "runtime/array_ref.h"
@@ -42,11 +49,7 @@ Author: Jared Roesch
 
 namespace lean {
 
-enum stdio {
-    PIPED,
-    INHERIT,
-    NUL,
-};
+
 
 #if defined(LEAN_WINDOWS)
 
@@ -439,6 +442,35 @@ extern "C" char **environ;
 static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const & args, stdio stdin_mode, stdio stdout_mode,
   stdio stderr_mode, option_ref<string_ref> const & cwd, array_ref<pair_ref<string_ref, option_ref<string_ref>>> const & env,
   bool inherit_env, bool do_setsid) {
+#ifdef LEAN_USE_POSIX_SPAWN
+    detail::posix_spawn_options options;
+    options.command = proc_name.data();
+    for (auto const & arg : args) options.args.emplace_back(arg.data());
+    if (cwd) options.cwd = cwd.get()->data();
+    for (auto const & entry : env) {
+        options.env.emplace_back(entry.fst().data(), entry.snd() ?
+            std::optional<std::string>(entry.snd().get()->data()) : std::nullopt);
+    }
+    options.inherit_env = inherit_env;
+    options.setsid = do_setsid;
+    options.input = stdin_mode; options.output = stdout_mode; options.error = stderr_mode;
+    auto child = detail::spawn_posix(options);
+    auto wrap = [](detail::unique_fd & fd, char const * mode) -> object * {
+        if (fd.get() < 0) return box(0);
+        FILE * stream = fdopen(fd.get(), mode);
+        if (!stream) throw errno;
+        fd.release();
+        return io_wrap_handle(stream);
+    };
+    object_ref input(wrap(child.input, "w"));
+    object_ref output(wrap(child.output, "r"));
+    object_ref error(wrap(child.error, "r"));
+    object_ref r = mk_cnstr(0, input, output, error, sizeof(pid_t) + sizeof(uint8_t));
+    static_assert(sizeof(pid_t) == sizeof(uint32), "pid_t is expected to be a 32-bit type");
+    cnstr_set_uint32(r.raw(), 3 * sizeof(object *), child.release_pid());
+    cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
+    return lean_io_result_mk_ok(r.steal());
+#else
     /* Setup stdio based on process configuration. */
     auto stdin_pipe  = setup_stdio(stdin_mode);
     auto stdout_pipe = setup_stdio(stdout_mode);
@@ -451,60 +483,6 @@ static obj_res spawn(string_ref const & proc_name, array_ref<string_ref> const &
         pargs.push_back(strdup(arg.data()));
     pargs.push_back(NULL);
 
-#ifdef LEAN_USE_POSIX_SPAWN
-    buffer<char *> penv;
-    for (auto & entry : env) {
-        if (entry.snd()) {
-            auto s = (sstream() << entry.fst().data() << "=" << entry.snd().get()->data()).str();
-            penv.push_back(strdup(s.data()));
-        }
-    }
-    penv.push_back(NULL);
-
-    posix_spawn_file_actions_t action;
-
-    posix_spawn_file_actions_init(&action);
-    if (stdin_pipe) {
-        posix_spawn_file_actions_addclose(&action, stdin_pipe->m_write_fd);
-        posix_spawn_file_actions_adddup2(&action, stdin_pipe->m_read_fd, STDIN_FILENO);
-        posix_spawn_file_actions_addclose(&action, stdin_pipe->m_read_fd);
-    }
-    if (stdout_pipe) {
-        posix_spawn_file_actions_addclose(&action, stdout_pipe->m_read_fd);
-        posix_spawn_file_actions_adddup2(&action, stdout_pipe->m_write_fd, STDOUT_FILENO);
-        posix_spawn_file_actions_addclose(&action, stdout_pipe->m_write_fd);
-    }
-    if (stderr_pipe) {
-        posix_spawn_file_actions_addclose(&action, stderr_pipe->m_read_fd);
-        posix_spawn_file_actions_adddup2(&action, stderr_pipe->m_write_fd, STDERR_FILENO);
-        posix_spawn_file_actions_addclose(&action, stderr_pipe->m_write_fd);
-    }
-
-    pid_t pid;
-    if (posix_spawnp(&pid, pargs[0], &action, NULL, pargs.data(), penv.data()) != 0) {
-        std::cerr << "could not execute external process '" << pargs[0] << "'" << std::endl
-                  << "posix_spawn failed with error: " << strerror(errno) << std::endl;
-        exit(-1);
-    }
-
-    // close child-side of pipes
-    if (stdin_pipe) close(stdin_pipe->m_read_fd);
-    if (stdout_pipe) close(stdout_pipe->m_write_fd);
-    if (stderr_pipe) close(stderr_pipe->m_write_fd);
-
-    //std::cerr << "pid=" << pid << " " << stdin_mode << "," << stdout_mode << "," << stderr_mode << std::endl;
-
-    object * parent_stdin  = stdin_pipe  ? io_wrap_handle(fdopen(stdin_pipe->m_write_fd, "w")) : box(0);
-    object * parent_stdout = stdout_pipe ? io_wrap_handle(fdopen(stdout_pipe->m_read_fd, "r")) : box(0);
-    object * parent_stderr = stderr_pipe ? io_wrap_handle(fdopen(stderr_pipe->m_read_fd, "r")) : box(0);
-
-    object_ref r = mk_cnstr(0, parent_stdin, parent_stdout, parent_stderr, sizeof(pid_t) + sizeof(uint8_t));
-    static_assert(sizeof(pid_t) == sizeof(uint32), "pid_t is expected to be a 32-bit type"); // NOLINT
-    cnstr_set_uint32(r.raw(), 3 * sizeof(object *), pid);
-    cnstr_set_uint8(r.raw(), 3 * sizeof(object *) + sizeof(pid_t), do_setsid);
-    return lean_io_result_mk_ok(r.steal());
-
-#else
     int pid = fork();
 
     if (pid == 0) {

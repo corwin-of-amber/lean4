@@ -7,6 +7,7 @@ Authors: Sebastian Ullrich
 #pragma once
 
 namespace lean {
+enum stdio { PIPED, INHERIT, NUL };
 void initialize_process();
 void finalize_process();
 }
