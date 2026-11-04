@@ -1,8 +1,10 @@
+module
+
 import Init
 
 /-! Exercise WASIX process options and recovery through the public Lean API. -/
 
-def main (args : List String) : IO UInt32 := do
+public def main (args : List String) : IO UInt32 := do
   if args == ["child"] then
     IO.println s!"{(← IO.getEnv "LEAN_SPAWN_TEST").getD "missing"}:{← IO.currentDir}"
     return 7
