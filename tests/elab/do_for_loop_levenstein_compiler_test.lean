@@ -1,3 +1,5 @@
+/-! Test compiler specialization of nested continuation-based loops and the fork's non-monadic array search. -/
+
 @[inline] unsafe def Array.forInNew'Unsafe {α : Type u} {σ β : Type v} {m : Type v → Type w}
     (as : Array α) (s : σ) (kcons : (a : α) → (h : a ∈ as) → (σ → m β) → σ → m β) (knil : σ → m β) : m β :=
   let sz := as.usize
@@ -21,37 +23,17 @@
   loop range.start (by simp) (by simp) init
 
 /--
-trace: [Compiler.saveMono] size: 13
-    def _private.Init.Data.Array.Basic.0.Array.anyMUnsafe.any._at_.Array.contains._at_.deletions.spec_0.spec_0 a as i stop : Bool :=
-      let _x.1 := USize.decEq i stop;
-      cases _x.1 : Bool
-      | Bool.false =>
-        let _x.2 := Array.uget ◾ as i ◾;
-        let _x.3 := String.decEq a _x.2;
-        cases _x.3 : Bool
-        | Bool.false =>
-          let _x.4 := 1;
-          let _x.5 := USize.add i _x.4;
-          let _x.6 := _private.Init.Data.Array.Basic.0.Array.anyMUnsafe.any._at_.Array.contains._at_.deletions.spec_0.spec_0 a as _x.5 stop;
-          return _x.6
-        | Bool.true =>
-          return _x.3
-      | Bool.true =>
-        let _x.7 := false;
-        return _x.7
-[Compiler.saveMono] size: 9
+trace: [Compiler.saveMono] size: 1
+    def Array.contains._at_.deletions.spec_0._lam_0 a x.1 : Bool :=
+      let _x.2 := String.decEq a x.1;
+      return _x.2
+[Compiler.saveMono] size: 4
     def Array.contains._at_.deletions.spec_0 as a : Bool :=
-      let _x.1 := 0;
-      let _x.2 := Array.size ◾ as;
-      let _x.3 := Nat.decLt _x.1 _x.2;
-      cases _x.3 : Bool
-      | Bool.false =>
-        return _x.3
-      | Bool.true =>
-        let _x.4 := 0;
-        let _x.5 := USize.ofNat _x.2;
-        let _x.6 := _private.Init.Data.Array.Basic.0.Array.anyMUnsafe.any._at_.Array.contains._at_.deletions.spec_0.spec_0 a as _x.4 _x.5;
-        return _x.6
+      let _f.1 := Array.contains._at_.deletions.spec_0._lam_0 a;
+      let _x.2 := 0;
+      let _x.3 := Array.size ◾ as;
+      let _x.4 := Array.anyUnsafe._redArg as _f.1 _x.2 _x.3;
+      return _x.4
 [Compiler.saveMono] size: 19
     def Array.forInNew'Unsafe.loop._at_.deletions.spec_2 as sz i s : Array String :=
       let _x.1 := USize.decLt i sz;
@@ -71,13 +53,13 @@ trace: [Compiler.saveMono] size: 13
           let _x.8 := String.length a;
           let _x.9 := 1;
           let _x.10 := Std.Legacy.Range.mk _x.4 _x.8 _x.9 ◾;
-          let _x.11 := Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4._redArg as sz _x.7 a _x.10 _x.4 s;
+          let _x.11 := Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3._redArg as sz _x.7 a _x.10 _x.4 s;
           return _x.11
         | Bool.true =>
           let _x.12 := Array.reverse._redArg s;
           return _x.12
 [Compiler.saveMono] size: 25
-    def Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range i a.2 : Array
+    def Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range i a.2 : Array
       String :=
       cases range : Array String
       | Std.Legacy.Range.mk start stop step step_pos =>
@@ -102,13 +84,13 @@ trace: [Compiler.saveMono] size: 13
           cases _x.15 : Array String
           | Bool.false =>
             let out := Array.push ◾ a.2 d;
-            let _x.16 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range _x.6 out;
+            let _x.16 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range _x.6 out;
             return _x.16
           | Bool.true =>
-            let _x.17 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range _x.6 a.2;
+            let _x.17 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range _x.6 a.2;
             return _x.17
 [Compiler.saveMono] size: 25
-    def Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4._redArg as sz _x.1 s' range i a.2 : Array
+    def Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3._redArg as sz _x.1 s' range i a.2 : Array
       String :=
       cases range : Array String
       | Std.Legacy.Range.mk start stop step step_pos =>
@@ -133,10 +115,10 @@ trace: [Compiler.saveMono] size: 13
           cases _x.15 : Array String
           | Bool.false =>
             let out := Array.push ◾ a.2 d;
-            let _x.16 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range _x.6 out;
+            let _x.16 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range _x.6 out;
             return _x.16
           | Bool.true =>
-            let _x.17 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range _x.6 a.2;
+            let _x.17 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range _x.6 a.2;
             return _x.17
 [Compiler.saveMono] size: 15
     def deletions n s : Array String :=
@@ -192,14 +174,14 @@ trace: [Compiler.saveMono] size: 13
       let _x.2 := Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._redArg s' kcontinue range i a.1;
       return _x.2
 [Compiler.saveMono] size: 1
-    def Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4 as sz _x.1 s' range this i hs hl a.2 : Array
+    def Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3 as sz _x.1 s' range this i hs hl a.2 : Array
       String :=
-      let _x.3 := Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4._redArg as sz _x.1 s' range i a.2;
+      let _x.3 := Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3._redArg as sz _x.1 s' range i a.2;
       return _x.3
 [Compiler.saveMono] size: 1
-    def Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4 s' as sz _x.1 range this i hs hl a.2 : Array
+    def Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3 s' as sz _x.1 range this i hs hl a.2 : Array
       String :=
-      let _x.3 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_4.spec_4._redArg s' as sz _x.1 range i a.2;
+      let _x.3 := Std.Legacy.Range.forInNew'.loop._at_.Std.Legacy.Range.forInNew'.loop._at_.deletions.spec_1._at_.Array.forInNew'Unsafe.loop._at_.deletions.spec_2.spec_3.spec_3._redArg s' as sz _x.1 range i a.2;
       return _x.3
 -/
 #guard_msgs in
