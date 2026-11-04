@@ -1,18 +1,28 @@
+.DEFAULT_GOAL := both
+include crazy/platform.mk
+
+crazy/platform.mk crazy/include/lean/version.h crazy/include/githash.h: crazy/platform.json crazy/configure.py
+	python3 crazy/configure.py
+
 #
 # This makefile can be used to compile either Stage 0 or Stage 1.
 # Building Stage 1 depends on having a bootstrapped build directory
 # (`build/release/stage1`).
 #
 ifeq ($(STAGE),0)
-ALLCPP := ${shell find stage0/src -name "*.cpp"}
-ALLC := ${shell find stage0/stdlib -name "*.c"}
+CPP_ROOT = stage0/src
+C_ROOT = stage0/stdlib
+ALLCPP := ${shell find $(CPP_ROOT) -name "*.cpp"}
+ALLC := ${shell find $(C_ROOT) -name "*.c"}
 SRC_LEAN_CPP = stage0/src/shell/lean.cpp
 SRC_LAKE_C = stage0/stdlib/LakeMain.c
 INC = -Istage0/src -Istage0/src/include
 else
 STAGE := 1
-ALLCPP := ${shell find src -name "*.cpp"}
-ALLC := ${shell find build/release/stage1/lib/temp -name "*.c"}
+CPP_ROOT = src
+C_ROOT = build/release/stage1/lib/temp
+ALLCPP := ${shell find $(CPP_ROOT) -name "*.cpp"}
+ALLC := ${shell find $(C_ROOT) -name "*.c"}
 SRC_LEAN_CPP = src/shell/lean.cpp
 SRC_LAKE_C = build/release/stage1/lib/temp/LakeMain.c
 INC = -Isrc -Isrc/include
@@ -27,9 +37,15 @@ OPT ?= Oz
 DLSYM ?= dyn
 MIMALLOC ?= 1
 MIMALLOC_DIR ?= build/release/mimalloc/src/mimalloc
-BUILD_SUFFIX = $(if $(filter Oz,$(OPT)),,-$(OPT))$(if $(filter 1,$(MIMALLOC)),-mimalloc,)
+BACKEND ?= native
+BUILD_SUFFIX = -$(BACKEND)-stage$(STAGE)-$(OPT)-$(DLSYM)$(if $(filter 1,$(MIMALLOC)),-mimalloc,)
+OBJ_DIR = obj$(BUILD_SUFFIX)
 LEAN_ARCHIVE = lib/liblean$(BUILD_SUFFIX).a
 BUILD_MODE = obj/.crazy-build-mode
+SOURCE_LIST = obj/.crazy-source-list
+LEAN_BIN = bin/lean$(if $(filter wasm,$(BACKEND)),.wasm,)
+LAKE_BIN = bin/lake$(if $(filter wasm,$(BACKEND)),.wasm,)
+PROBE_BIN = bin/mimalloc-probe$(if $(filter wasm,$(BACKEND)),.wasm,)
 
 SRC_CPP = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLCPP)} crazy/stubs.cpp
 SRC_C = ${filter-out ${addprefix %/,$(EXCEPT)}, $(ALLC)}
@@ -45,12 +61,14 @@ endif
 
 ifeq ($(MIMALLOC),1)
 MODIFIERS += -DLEAN_MIMALLOC
-SRC_C += build/release/mimalloc/src/mimalloc/src/static.c
+MIMALLOC_OBJECT = $(OBJ_DIR)/crazy/mimalloc.o
 INC += -I$(MIMALLOC_DIR)/include -I$(MIMALLOC_DIR)/src
 MIMALLOC_DEPS := $(shell find $(MIMALLOC_DIR)/src $(MIMALLOC_DIR)/include -type f 2>/dev/null)
 
-obj/%/mimalloc/src/static.o: $(MIMALLOC_DEPS)
-obj/%/mimalloc/src/static.o: CFLAGS += -include pthread.h -DMI_DEBUG=0 -DMI_SECURE=0 -DMI_USE_PTHREADS=1 -DMI_TLS_MODEL_LOCAL=1
+$(MIMALLOC_OBJECT): $(MIMALLOC_DIR)/src/static.c $(MIMALLOC_DEPS)
+	@mkdir -p $(dir $@)
+	clang -c $< -o $@ $(CFLAGS) -MMD -MP -MT$@ -MF $@.d -include pthread.h -DMI_DEBUG=0 -DMI_SECURE=0 -DMI_USE_PTHREADS=1 -DMI_TLS_MODEL_LOCAL=1
+	@touch $@
 endif
 
 # This is a special build mode that uses a C array as a table for
@@ -62,7 +80,10 @@ MODIFIERS += -DAMBER_DL_DYNTABLE
 endif
 
 
-OBJ = $(addprefix obj/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o))
+OBJ = $(addprefix $(OBJ_DIR)/,$(SRC_CPP:.cpp=.o) $(SRC_C:.c=.o)) $(MIMALLOC_OBJECT)
+ifeq ($(MIMALLOC),1)
+$(OBJ) $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o) $(SRC_LAKE_C:.c=.o)): $(MIMALLOC_DIR)/include/mimalloc.h crazy/include/lean/mimalloc.h
+endif
 
 CFLAGS = $(MODIFIERS) $(INC)
 LDFLAGS = # -L/opt/homebrew/lib -luv -lgmp
@@ -86,41 +107,51 @@ TSX = crazy/node_modules/.bin/tsx
 make-rec = $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 
 
-both: bin/lean bin/lake
+both: $(LEAN_BIN) $(LAKE_BIN)
 .PHONY: both
 
-bin/lean: $(addprefix obj/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
+$(LEAN_BIN): $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	-@$(make-rec) lib/export-symbols.txt
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $(addprefix obj/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(LDFLAGS)
+	clang++ -o bin/lean --std=c++20 $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o)) $(LEAN_ARCHIVE) $(LDFLAGS)
 
 	@if [ -e bin/lean.wasm ] && [ -e build-wasmer-fs/usr/bin/lean ] ; then \
 	  cp bin/lean.wasm build-wasmer-fs/usr/bin/lean ; fi    # this is easy to forget and it bites
 
-bin/lake: $(addprefix obj/,$(SRC_LAKE_C:.c=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
+$(LAKE_BIN): $(addprefix $(OBJ_DIR)/,$(SRC_LAKE_C:.c=.o)) $(LEAN_ARCHIVE) $(BUILD_MODE)
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $< $(LEAN_ARCHIVE) $(LDFLAGS)
+	clang++ -o bin/lake --std=c++20 $< $(LEAN_ARCHIVE) $(LDFLAGS)
 
-$(LEAN_ARCHIVE): $(OBJ)
+$(LEAN_ARCHIVE): $(OBJ) $(SOURCE_LIST)
 	@mkdir -p $(dir $@)
-	ar r $@ $+
+	rm -f $@ $(@:.a=.wa)
+	ar r $@ $(filter %.o,$+)
+	@touch $@
 
-# The executable paths are shared, while objects and archives are per variant.
+# Executables are shared; object and archive paths identify the configuration.
+# Bypass wasi-kit’s mv wrapper for host-side bookkeeping files.
+$(OBJ) $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o) $(SRC_LAKE_C:.c=.o)) $(OBJ_DIR)/tests/wasm/mimalloc.o: $(OBJ_DIR)/.build-flags
+$(OBJ_DIR)/.build-flags: FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(abspath $(MIMALLOC_DIR)):$(CFLAGS)' > $@.tmp
+	@cmp -s $@.tmp $@ || /bin/mv $@.tmp $@
+	@rm -f $@.tmp
+
 $(BUILD_MODE): FORCE
 	@mkdir -p $(dir $@)
-	@printf '%s\n' '$(BUILD_SUFFIX):$(MIMALLOC_DIR)' > $@.tmp
-	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@printf '%s\n' '$(BUILD_SUFFIX):$(abspath $(MIMALLOC_DIR)):$(LDFLAGS)' > $@.tmp
+	@cmp -s $@.tmp $@ || /bin/mv $@.tmp $@
 	@rm -f $@.tmp
 .PHONY: FORCE
 FORCE:
 
 ifeq ($(MIMALLOC),1)
-bin/mimalloc-probe: obj/tests/wasm/mimalloc.o obj/crazy/mimalloc.o $(BUILD_MODE)
+$(PROBE_BIN): $(OBJ_DIR)/tests/wasm/mimalloc.o $(MIMALLOC_OBJECT) $(BUILD_MODE)
 	@mkdir -p $(dir $@)
-	clang++ -o $@ --std=c++20 $(filter %.o,$^) $(LDFLAGS)
+	clang++ -o bin/mimalloc-probe --std=c++20 $(filter %.o,$^) $(LDFLAGS)
 
-test-mimalloc: bin/mimalloc-probe
-	wasmer run --stack-size=$(WASMER_STACK_SIZE) bin/mimalloc-probe.wasm
+test-mimalloc: $(PROBE_BIN)
+	$(if $(filter wasm,$(BACKEND)),wasmer run --stack-size=$(WASMER_STACK_SIZE) bin/mimalloc-probe.wasm,./bin/mimalloc-probe)
 else
 test-mimalloc:
 	@echo 'Set MIMALLOC=1 to run the allocator probe.' >&2
@@ -128,7 +159,13 @@ test-mimalloc:
 endif
 .PHONY: test-mimalloc
 
-lib/dyn.c: $(ALLC) crazy/extract-native-exports.ts crazy/dyntable/crc.ts
+$(SOURCE_LIST): FORCE
+	@mkdir -p $(dir $@)
+	@find $(CPP_ROOT) $(C_ROOT) -type f \( -name '*.c' -o -name '*.cpp' \) | LC_ALL=C sort > $@.tmp
+	@cmp -s $@.tmp $@ || /bin/mv $@.tmp $@
+	@rm -f $@.tmp
+
+lib/dyn.c: $(SOURCE_LIST) $(ALLC) crazy/extract-native-exports.ts crazy/dyntable/crc.ts
 	@mkdir -p $(dir $@)
 	$(TSX) crazy/extract-native-exports.ts dyn > $@
 lib/export-symbols.txt:
@@ -140,15 +177,17 @@ lib/export-symbols-all.txt: $(LEAN_ARCHIVE:.a=.wa)
 	nm --defined-only -A $< | awk '$$NF ~ /^(runtime_|meta_)?initialize_|.*__boxed$$/ { print "-Wl,--export=" $$NF }' > $@
 $(LEAN_ARCHIVE:.a=.wa):
 
-obj/%.o: %.cpp
+$(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
-	clang++ --std=c++20 -c $< -o $@ $(CFLAGS)
-obj/%.o: %.c
+	clang++ --std=c++20 -c $< -o $@ $(CFLAGS) -MMD -MP -MT$@ -MF $@.d
+	@touch $@
+$(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	clang -c $< -o $@ $(CFLAGS)
+	clang -c $< -o $@ $(CFLAGS) -MMD -MP -MT$@ -MF $@.d
+	@touch $@
 
 # These units embed the version or commit from the port's checked-in headers.
-$(addprefix obj/,src/util/shell.o src/library/util.o src/library/module.o src/runtime/platform.o src/runtime/exception.o build/release/stage1/lib/temp/Init/Meta/Defs.o): crazy/include/lean/version.h crazy/include/githash.h
+$(addprefix $(OBJ_DIR)/,src/util/shell.o src/library/util.o src/library/module.o src/runtime/platform.o src/runtime/exception.o build/release/stage1/lib/temp/Init/Meta/Defs.o): crazy/include/lean/version.h crazy/include/githash.h
 
 wasm-opt:
 	wasm-opt bin/lean.wasm -Oz -o bin/lean.wasm
@@ -156,11 +195,10 @@ wasm-opt:
 
 build-wasmer-fs:
 	rm -rf $@
-	mkdir -p $@/home/init/src $@/usr/bin $@/etc $@/dev
+	mkdir -p $@/home/init/src $@/usr/bin $@/etc
 	cp bin/lean.wasm              $@/usr/bin/lean
 	cp crazy/init/lakefile.toml   $@/home/init
 	cp /etc/localtime             $@/etc
-	dd if=/dev/urandom of=$@/dev/urandom bs=1K count=1
 
 # Refresh the bootstrap configuration without discarding completed libraries.
 build-wasmer-fs/home/init/lakefile.toml: crazy/init/lakefile.toml | build-wasmer-fs
@@ -185,12 +223,11 @@ lib-init-fresh:
 	cp -r src/lake src/LeanExport  tmp/init/src
 	$(make-rec) lib-init
 
-WASMER_STACK_SIZE ?= 16000000
 WASMER_FLAGS = --stack-size=$(WASMER_STACK_SIZE)
 ifneq ($(J),)
 WASMER_FLAGS += --env LEAN_NUM_THREADS=$(J)
 endif
-WASMER_FLAGS += ${foreach d, home usr dev,\$(newline) --volume build-wasmer-fs/$(d):/$(d)}
+WASMER_FLAGS += ${foreach d, home usr,\$(newline) --volume build-wasmer-fs/$(d):/$(d)}
 
 lib-init-wasm: build-wasmer-fs
 	cp -r src/Init.lean src/Init build-wasmer-fs/home/init/src
@@ -215,7 +252,7 @@ lib-lake-wasm: build-wasmer-fs
 LIB_LEAN = $(wildcard \
 	build-wasmer-fs/home/init/build/lib/lean build-wasmer-fs/usr/lib/lean)
 
-LIB_LEAN_EXTS = .olean .ir .ir.sig
+LIB_LEAN_EXTS = .olean .olean.server .olean.private .ir .ir.sig
 pats = $(addprefix *, ${LIB_LEAN_EXTS})
 find_flags = $(subst $(E) -o @@,,$(foreach pat,$(pats),-name '$(pat)' -o) @@)
 
@@ -257,3 +294,5 @@ define newline
 
 
 endef
+
+-include $(OBJ:%=%.d) $(addprefix $(OBJ_DIR)/,$(SRC_LEAN_CPP:.cpp=.o.d) $(SRC_LAKE_C:.c=.o.d))

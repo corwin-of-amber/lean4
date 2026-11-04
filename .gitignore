@@ -42,3 +42,13 @@ wdOut.txt
 /bin
 /build-wasmer-fs
 /bob.tar
+
+/wasmer-*
+downstream_releases/
+/tmp
+/vir
+.*.swp
+node_modules
+/crazy/dyn.c
+
+/.bob-*
