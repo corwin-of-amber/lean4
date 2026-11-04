@@ -70,7 +70,7 @@ async function packBuiltArtifacts(dir: string) {
         (await fs.readdir(dir, {recursive: true, encoding: 'utf-8'}))
         .filter(fn => fn.endsWith('/build/lib/lean'));
 
-    let stagingDir = '/tmp/bob-staging', exts = ['.olean', '.ir', '.ir.sig'],
+    let stagingDir = path.join(process.env.TMPDIR || '/tmp', 'bob-staging'), exts = ['.olean', '.ir', '.ir.sig'],
         outFn = 'bob.tar';
     fs.emptyDirSync(stagingDir);
     fs.mkdirSync(stagingDir, {recursive: true});
@@ -100,8 +100,8 @@ function isDir(d: string) {
 const WASMER = {
     volume: 'build-wasmer-fs',
     mounts: ['usr', 'home', 'etc', 'dev'],
-    flags: ['--stack-size=4000000'],
-    env: {LEAN_NUM_THREADS: 2}
+    flags: ['--stack-size=' + (process.env.WASMER_STACK_SIZE || '16000000')],
+    env: {LEAN_NUM_THREADS: process.env.LEAN_NUM_THREADS || process.env.J || '2'}
 }
 
 async function runCommand(cmd: string, args: string[], options: SpawnOptions = {}) {
@@ -109,7 +109,10 @@ async function runCommand(cmd: string, args: string[], options: SpawnOptions = {
     let p = spawn(cmd, args, {stdio: 'inherit', ...options});
 
     return await new Promise((resolve, reject) => {
-        p.on('exit', resolve);
+        p.on('exit', (code, signal) => {
+            if (code === 0) resolve(code);
+            else reject(new Error(`${cmd} failed (${signal ?? code})`));
+        });
         p.on('error', reject)
     })
 }
@@ -162,7 +165,9 @@ async function main() {
 
     await shrinkwrap(buildvol, o.forceToml);
 
-    await runWasmer(builddir, 'bin/lake.wasm', ['build', target+':leanArts'])
+    await runWasmer(builddir, 'bin/lake.wasm', [
+        '--no-ansi', 'build', '--no-cache', '--packages=lake-manifest.json', target+':leanArts'
+    ])
 
     await packBuiltArtifacts(buildvol);
 }

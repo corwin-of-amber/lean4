@@ -20,7 +20,7 @@ endif
 
 INC += -Icrazy -Icrazy/include
 
-MAINS = LeanIR.c LeanChecker.c LakeMain.c Leanc.c shell/lean.cpp
+MAINS = LeanIR.c LeanChecker.c LeanExport.c LakeMain.c Leanc.c shell/lean.cpp
 EXCEPT = lean_js.cpp $(MAINS)
 
 OPT ?= Oz
@@ -120,7 +120,7 @@ bin/mimalloc-probe: obj/tests/wasm/mimalloc.o obj/crazy/mimalloc.o $(BUILD_MODE)
 	clang++ -o $@ --std=c++20 $(filter %.o,$^) $(LDFLAGS)
 
 test-mimalloc: bin/mimalloc-probe
-	wasmer run --stack-size=4000000 bin/mimalloc-probe.wasm
+	wasmer run --stack-size=$(WASMER_STACK_SIZE) bin/mimalloc-probe.wasm
 else
 test-mimalloc:
 	@echo 'Set MIMALLOC=1 to run the allocator probe.' >&2
@@ -128,7 +128,7 @@ test-mimalloc:
 endif
 .PHONY: test-mimalloc
 
-lib/dyn.c:
+lib/dyn.c: $(ALLC) crazy/extract-native-exports.ts crazy/dyntable/crc.ts
 	@mkdir -p $(dir $@)
 	$(TSX) crazy/extract-native-exports.ts dyn > $@
 lib/export-symbols.txt:
@@ -147,6 +147,9 @@ obj/%.o: %.c
 	@mkdir -p $(dir $@)
 	clang -c $< -o $@ $(CFLAGS)
 
+# These units embed the version or commit from the port's checked-in headers.
+$(addprefix obj/,src/util/shell.o src/library/util.o src/library/module.o src/runtime/platform.o src/runtime/exception.o build/release/stage1/lib/temp/Init/Meta/Defs.o): crazy/include/lean/version.h crazy/include/githash.h
+
 wasm-opt:
 	wasm-opt bin/lean.wasm -Oz -o bin/lean.wasm
 .PHONY: wasm-opt
@@ -159,13 +162,19 @@ build-wasmer-fs:
 	cp /etc/localtime             $@/etc
 	dd if=/dev/urandom of=$@/dev/urandom bs=1K count=1
 
+# Refresh the bootstrap configuration without discarding completed libraries.
+build-wasmer-fs/home/init/lakefile.toml: crazy/init/lakefile.toml | build-wasmer-fs
+	cp $< $@
+
+lib-init-wasm lib-std-wasm lib-lean-wasm lib-lake-wasm: build-wasmer-fs/home/init/lakefile.toml
+
 lib-init:
 	rm -rf tmp/init/build
 	cd tmp/init && ../../bin/lake build Init
 	cd lib && ln -s ../tmp/init/build/lib/lean .
 
 lib-others:
-	cd tmp/init && ../../bin/lake build Std Lean Lake
+	cd tmp/init && ../../bin/lake build Std Lean LeanExport Lake
 
 lib-init-fresh:
 	rm -rf tmp/init; mkdir -p tmp/init/src
@@ -173,10 +182,11 @@ lib-init-fresh:
 	cp -r src/Init.lean src/Init   tmp/init/src
 	cp -r src/Std.lean  src/Std    tmp/init/src
 	cp -r src/Lean.lean src/Lean   tmp/init/src
-	cp -r src/lake                 tmp/init/src
+	cp -r src/lake src/LeanExport  tmp/init/src
 	$(make-rec) lib-init
 
-WASMER_FLAGS = --stack-size=4000000
+WASMER_STACK_SIZE ?= 16000000
+WASMER_FLAGS = --stack-size=$(WASMER_STACK_SIZE)
 ifneq ($(J),)
 WASMER_FLAGS += --env LEAN_NUM_THREADS=$(J)
 endif
@@ -184,22 +194,22 @@ WASMER_FLAGS += ${foreach d, home usr dev,\$(newline) --volume build-wasmer-fs/$
 
 lib-init-wasm: build-wasmer-fs
 	cp -r src/Init.lean src/Init build-wasmer-fs/home/init/src
-	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Init
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build Init
 	@$(make-rec) lib-init-wasm-tar
 
 lib-std-wasm: build-wasmer-fs
 	cp -r src/Std.lean src/Std build-wasmer-fs/home/init/src
-	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Std
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build Std
 
 lib-lean-wasm: build-wasmer-fs
 	cp -r src/Lean.lean src/Lean build-wasmer-fs/home/init/src
 	# splitting to two phases helps avoid crashes during CI...
-	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build +Lean.Meta
-	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lean
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build +Lean.Meta
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build Lean
 
 lib-lake-wasm: build-wasmer-fs
-	cp -r src/lake build-wasmer-fs/home/init/src
-	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- build Lake
+	cp -r src/lake src/LeanExport build-wasmer-fs/home/init/src
+	wasmer run $(WASMER_FLAGS) --cwd /home/init bin/lake.wasm -- --no-ansi build Lake
 
 # Location of lib build artifacts (either `/home/init` or `/usr/lib`)
 LIB_LEAN = $(wildcard \
@@ -220,6 +230,8 @@ lib-wasm-tars:
 	  tar cf ${PWD}/lib/Std.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lean && \
 	  tar cf ${PWD}/lib/Lean.tar `find * ${find_flags}`)
+	( cd ${LIB_LEAN}/LeanExport && \
+	  tar cf ${PWD}/lib/LeanExport.tar `find * ${find_flags}`)
 	( cd ${LIB_LEAN}/Lake && \
 	  tar cf ${PWD}/lib/Lake.tar `find * ${find_flags}`)
 

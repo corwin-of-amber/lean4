@@ -117,7 +117,7 @@ function *chain<T>(...iterables: Iterable<T>[]) {
     for (let it of iterables) yield* it;
 }
 
-const EXCEPT = ['LeanIR.c', 'LeanChecker.c', 'Leanc.c', 'LakeMain.c'];
+const EXCEPT = ['LeanIR.c', 'LeanChecker.c', 'LeanExport.c', 'Leanc.c', 'LakeMain.c'];
 
 function *procession(tbl: Set<string>, max: number) {
     for (let fn of allCFiles(ROOT_C_DIR)) {

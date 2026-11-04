@@ -117,8 +117,8 @@ def mkContext (lratPath : System.FilePath) (cfg : BVDecideConfig)
 
 @[inherit_doc Lean.Parser.Tactic.bvCheck]
 def bvCheck (g : MVarId) (hypotheses : Array Normalize.Hyp) (ctx : TacticContext) :
-    Meta.Sym.SymM Unit := do
-  M.run (hypotheses := hypotheses) do
+    Grind.GrindM Unit := do
+  ReifyM.run (hypotheses := hypotheses) (cfg := ctx.config) do
     discard <| closeWithBVReflection g (lratChecker ctx)
 
 def evalBvCheck (target : Normalize.Target) (ctx : TacticContext) (warn : MetaM Unit) :
@@ -152,9 +152,15 @@ def mkContext (cfg : BVDecideConfig) (types : Option (Array Name) := none) :
   let lratPath ← getLratFileName
   BVCheck.mkContext lratPath cfg types
 
-inductive TraceResult where
+
+inductive TraceAction where
   | normalize
   | check (path : System.FilePath)
+  | decide
+
+structure TraceResult where
+  lemmas : Array CegarHyp
+  action : TraceAction
 
 def evalBvTrace (target : Normalize.Target) (ctx : TacticContext) : Grind.GrindM TraceResult := do
   let trace ← target.mvarId.withContext do
@@ -171,16 +177,19 @@ def evalBvTrace (target : Normalize.Target) (ctx : TacticContext) : Grind.GrindM
   2. Just return the fully trimmed proof in the format desired by the configuration from `bvDecide`.
   3. Write it to the file directly.
   -/
-  match trace.lratCert with
+  match trace.cegarCert.lratCert with
   | none =>
-    return .normalize
+    return { lemmas := trace.cegarCert.lemmas, action := .normalize }
   | some .. =>
-    if ctx.config.trimProofs then
-      let proof ← loadLRATProof ctx.lratPath
-      let trimmed ← IO.ofExcept <| LRAT.trim proof
-      dumpLRATProof ctx.lratPath trimmed ctx.config.binaryProofs
-    let some lratFile := ctx.lratPath.fileName | throwError "could not find file name"
-    return .check lratFile
+    if trace.cegarCert.lemmas.isEmpty then
+      if ctx.config.trimProofs then
+        let proof ← loadLRATProof ctx.lratPath
+        let trimmed ← IO.ofExcept <| LRAT.trim proof
+        dumpLRATProof ctx.lratPath trimmed ctx.config.binaryProofs
+      let some lratFile := ctx.lratPath.fileName | throwError "could not find file name"
+      return { lemmas := #[], action := .check lratFile }
+    else
+      return { lemmas := trace.cegarCert.lemmas, action := .decide }
 
 end BVTrace
 
@@ -191,7 +200,7 @@ def evalBvDecide : Tactic := fun
   | `(tactic| bv_decide $cfg:optConfig $[$types:bvTypes]?) => do
     ensureBvDecide
     let cfg ← elabBVDecideConfig cfg
-    let types ← elabBVDecideTypes types
+    let types ← elabBVDecideTypes types cfg
     IO.FS.withTempFile fun _ lratFile => do
       let cfg ← TacticContext.new lratFile cfg types
       liftMetaFinishingTactic fun g => do
@@ -205,19 +214,30 @@ def evalBvTraceTactic : Tactic := fun
   | `(tactic| bv_decide?%$tk $cfgStx:optConfig $[$typesStx:bvTypes]?) => do
     ensureBvDecide
     let cfg ← elabBVDecideConfig cfgStx
-    let types ← elabBVDecideTypes typesStx
+    let types ← elabBVDecideTypes typesStx cfg
     let ctx ← BVTrace.mkContext cfg types
     let g ← getMainGoal
     let params ← Grind.mkDefaultParams {}
     Grind.GrindM.run (params := params) do
-      match ← BVTrace.evalBvTrace (.mvarIdTarget g) ctx with
+      let trace ← BVTrace.evalBvTrace (.mvarIdTarget g) ctx
+      let haves ← g.withContext <| trace.lemmas.mapM fun lemma => do
+        let lemmaStx ← PrettyPrinter.delab lemma.hyp.type
+        let proofStx ← lemma.tacticProof
+        `(tactic| have : $lemmaStx := by $(proofStx))
+      let withHaves (final : TSyntax `tactic) : MetaM (TSyntax ``Parser.Tactic.tacticSeq) :=
+        `(tacticSeq| $(haves.push final)*)
+      match trace.action with
       | .normalize =>
         let normalizeStx ← `(tactic| bv_normalize $cfgStx:optConfig $[$typesStx:bvTypes]?)
-        TryThis.addSuggestion tk normalizeStx (origSpan? := ← getRef)
+        TryThis.addSuggestion tk (← withHaves normalizeStx) (origSpan? := ← getRef)
       | .check lratFile =>
         let bvCheckStx ←
           `(tactic| bv_check $cfgStx:optConfig $[$typesStx:bvTypes]? $(quote lratFile.toString))
-        TryThis.addSuggestion tk bvCheckStx (origSpan? := ← getRef)
+        TryThis.addSuggestion tk (← withHaves bvCheckStx) (origSpan? := ← getRef)
+      | .decide =>
+        let bvDecideStx ←
+          `(tactic| bv_decide $cfgStx:optConfig $[$typesStx:bvTypes]?)
+        TryThis.addSuggestion tk (← withHaves bvDecideStx) (origSpan? := ← getRef)
   | _ => throwUnsupportedSyntax
 
 open Lean.Meta.Tactic in
@@ -226,7 +246,7 @@ def evalBvCheckTactic : Tactic := fun
   | `(tactic| bv_check%$tk $cfgStx:optConfig $[$typesStx:bvTypes]? $path:str) => do
     ensureBvDecide
     let cfg ← elabBVDecideConfig cfgStx
-    let types ← elabBVDecideTypes typesStx
+    let types ← elabBVDecideTypes typesStx cfg
     let ctx ← BVCheck.mkContext path.getString cfg types
     let g ← getMainGoal
     let params ← Grind.mkDefaultParams {}
@@ -241,11 +261,11 @@ def evalBVNormalize : Tactic := fun
   | `(tactic| bv_normalize $cfg:optConfig $[$types:bvTypes]?) => do
     ensureBvDecide
     let cfg ← elabBVDecideConfig cfg
-    let types ← elabBVDecideTypes types
+    let types ← elabBVDecideTypes types cfg
     let g ← getMainGoal
     let params ← Grind.mkDefaultParams {}
     let (_, state) ← Grind.GrindM.run (params := params) do
-      Normalize.bvNormalize.run { config := cfg, restrictedTypes := types } (.mvarIdTarget g)
+      Normalize.bvNormalize.run (.new (.solve types) cfg) (.mvarIdTarget g)
     let goal := state.target.mvarId
     if ← goal.isAssigned then
       replaceMainGoal []

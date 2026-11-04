@@ -48,3 +48,16 @@ found in `wasi-kit.json`. In particular:
    file and increases loading times due to the size of the export table.
    This requires running `make -f crazy.makefile lib/export-symbols.txt` before
    the final linking; the main target `bin/lean` takes care of that.
+
+### Lean 4.36.0-rc2
+
+The port targets Lean 4.36.0-rc2. Configure the native bootstrap with
+`cmake --preset release -DLEAN_SPECIAL_VERSION_DESC=rc2` before building
+Stage 1. The Wasm version headers identify the same upstream release.
+
+Lake now imports `LeanExport`; the bootstrap configuration builds its library
+modules and the library packaging produces `lib/LeanExport.tar`. The
+`LeanExport.c` executable entry point is excluded from the compiler archive.
+The Wasmer library runner uses a 16 MB host call stack for the new symbolic
+simplifier code; override `WASMER_STACK_SIZE` if needed. This is separate from
+Lean's `-s4000` option.

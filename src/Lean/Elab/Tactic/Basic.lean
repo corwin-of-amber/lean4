@@ -209,7 +209,10 @@ partial def evalTactic (stx : Syntax) : TacticM Unit := do
         if evalFns.isEmpty && macros.isEmpty then
           throwErrorAt stx "Tactic `{stx.getKind}` has not been implemented"
         let s ← Tactic.saveState
-        expandEval s macros evalFns #[]
+        if isDeprecatedSyntax (← getEnv) stx.getKind then
+          Term.withoutCheckDeprecated <| expandEval s macros evalFns #[]
+        else
+          expandEval s macros evalFns #[]
     | .missing => pure ()
     | _ => throwError m!"Unexpected tactic{indentD stx}"
 where
@@ -565,7 +568,7 @@ def closeMainGoal (tacName : Name) (val : Expr) (checkUnassigned := true): Tacti
   if (← mvarId.checkedAssign val) then
     replaceMainGoal []
   else
-    throwTacticEx tacName mvarId m!"attempting to close the goal using{indentExpr val}\nthis is often due occurs-check failure"
+    throwTacticEx tacName mvarId m!"attempting to close the goal using{indentExpr val}\nthis is often due to an occurs-check failure"
 
 @[inline] def liftMetaMAtMain (x : MVarId → MetaM α) : TacticM α := do
   withMainContext do x (← getMainGoal)

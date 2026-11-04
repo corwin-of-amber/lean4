@@ -23,7 +23,6 @@ Author: Leonardo de Moura
 #include "runtime/object_ref.h"
 #include "runtime/option_ref.h"
 #include "runtime/utf8.h"
-#include "util/timer.h"
 #include "util/macros.h"
 #include "util/io.h"
 #include "util/options.h"
@@ -240,7 +239,7 @@ bool process_shell_option(object_ref & shell_opts, int opt, char const * optarg,
         dec_ref(r);
         return false;
     } else {
-        rc = unbox(io_result_get_error(r));
+        rc = lean_unbox_uint32(io_result_get_error(r));
         dec_ref(r);
         return true;
     }

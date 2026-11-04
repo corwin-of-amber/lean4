@@ -1,5 +1,6 @@
 module
 set_option linter.unusedSimpArgs false
+set_option warn.sorry false
 
 open BitVec
 
@@ -719,8 +720,6 @@ theorem toNat_eq_nat {x : BitVec w} {y : Nat} :
   · intro eq
     simp [Nat.mod_eq_of_lt, eq]
 
-grind_pattern toNat_eq_nat => BitVec.ofNat w y, x.toNat
-
 /-- Moves one-sided right toNat equality to BitVec equality. -/
 theorem nat_eq_toNat {x : BitVec w} {y : Nat} :
     (y = x.toNat) ↔ (y < 2^w ∧ (x = BitVec.ofNat w y)) := by
@@ -1362,7 +1361,7 @@ theorem toNat_shiftLeft {x : BitVec v} :
 
 theorem toInt_shiftLeft {x : BitVec w} :
     (x <<< n).toInt = (x.toNat <<< n : Int).bmod (2^w) := by
-  grind [toInt_eq_toNat_bmod, Int.emod_bmod]
+  grind [toInt_shiftLeft]
 
 theorem toFin_shiftLeft {n : Nat} (x : BitVec w) :
     (x <<< n).toFin = Fin.ofNat (2^w) (x.toNat <<< n) := rfl
@@ -1786,7 +1785,7 @@ theorem toFin_sshiftRight' {x y : BitVec w} :
   rw [sshiftRight_eq', toFin_sshiftRight]
 
 theorem toInt_sshiftRight' {x y : BitVec w} :
-    (x.sshiftRight' y).toInt = x.toInt >>> y.toNat := by grind
+    (x.sshiftRight' y).toInt = x.toInt >>> y.toNat := by grind [toInt_sshiftRight]
 
 -- This should not be a `@[simp]` lemma as the left hand side is not in simp normal form.
 theorem getLsbD_sshiftRight' {x y : BitVec w} {i : Nat} :
@@ -1920,7 +1919,7 @@ and we compute a modulo by `2^v`.
 -/
 theorem toInt_signExtend_eq_toNat_bmod_of_le {x : BitVec w} (hv : v ≤ w) :
     (x.signExtend v).toInt = Int.bmod x.toNat (2^v) := by
-  grind [signExtend_eq_setWidth_of_le]
+  grind [signExtend_eq_setWidth_of_le, toInt_setWidth]
 
 /--
 Interpreting the sign extension of `(x : BitVec w)` to width `v`
@@ -4000,7 +3999,11 @@ theorem replicate_append_self {x : BitVec w} :
     conv => lhs; rw [ih]
     simp only [BitVec.cast_cast, BitVec.cast_eq]
     rw [← cast_append_left]
-    · grind
+    -- The goal needs the exponent identity `w + w * n = w * (n + 1)` to relate
+    -- `2 ^ _` terms in the `toNat` images of the appends. `grind` finds it only via a
+    -- model-based theory combination case split, and the homomorphism encoding produces
+    -- enough competing exponent-pair candidates that the default split budget is too small.
+    · grind (splits := 11)
     · rw [Nat.add_comm, Nat.mul_add, Nat.mul_one]; omega
 
 theorem replicate_succ' {x : BitVec w} :

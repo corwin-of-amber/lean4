@@ -1,6 +1,6 @@
 // Lean compiler output
 // Module: Std.Http.Internal.ChunkedBuffer
-// Imports: import Init.Data.ToString import Init.Data.Array.Lemmas public import Init.Data.String.Basic public import Init.Data.ByteArray
+// Imports: import Init.Data.ToString import Init.Data.Array.Lemmas public import Init.Data.String.Basic public import Init.Data.ByteArray.Basic
 #include <lean/lean.h>
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-parameter"
@@ -402,9 +402,9 @@ return v___x_98_;
 LEAN_EXPORT lean_object* l_Std_Http_Internal_ChunkedBuffer_toByteArray___lam__0___boxed(lean_object* v___x_99_, lean_object* v_x1_100_, lean_object* v_x2_101_){
 _start:
 {
-uint8_t v___x_92__boxed_102_; lean_object* v_res_103_; 
-v___x_92__boxed_102_ = lean_unbox(v___x_99_);
-v_res_103_ = l_Std_Http_Internal_ChunkedBuffer_toByteArray___lam__0(v___x_92__boxed_102_, v_x1_100_, v_x2_101_);
+uint8_t v___x_94__boxed_102_; lean_object* v_res_103_; 
+v___x_94__boxed_102_ = lean_unbox(v___x_99_);
+v_res_103_ = l_Std_Http_Internal_ChunkedBuffer_toByteArray___lam__0(v___x_94__boxed_102_, v_x1_100_, v_x2_101_);
 lean_dec_ref(v_x2_101_);
 return v_res_103_;
 }
@@ -596,7 +596,7 @@ return v_r_181_;
 lean_object* runtime_initialize_Init_Data_ToString(uint8_t builtin);
 lean_object* runtime_initialize_Init_Data_Array_Lemmas(uint8_t builtin);
 lean_object* runtime_initialize_Init_Data_String_Basic(uint8_t builtin);
-lean_object* runtime_initialize_Init_Data_ByteArray(uint8_t builtin);
+lean_object* runtime_initialize_Init_Data_ByteArray_Basic(uint8_t builtin);
 void lean_initialize_runtime_module();
 static bool _G_runtime_initialized = false;
 LEAN_EXPORT lean_object* runtime_initialize_Std_Http_Internal_ChunkedBuffer(uint8_t builtin) {
@@ -613,7 +613,7 @@ lean_dec_ref(res);
 res = runtime_initialize_Init_Data_String_Basic(builtin);
 if (lean_io_result_is_error(res)) return res;
 lean_dec_ref(res);
-res = runtime_initialize_Init_Data_ByteArray(builtin);
+res = runtime_initialize_Init_Data_ByteArray_Basic(builtin);
 if (lean_io_result_is_error(res)) return res;
 lean_dec_ref(res);
 return lean_io_result_mk_ok(lean_box(0));
@@ -628,7 +628,7 @@ return lean_io_result_mk_ok(lean_box(0));
 lean_object* initialize_Init_Data_ToString(uint8_t builtin);
 lean_object* initialize_Init_Data_Array_Lemmas(uint8_t builtin);
 lean_object* initialize_Init_Data_String_Basic(uint8_t builtin);
-lean_object* initialize_Init_Data_ByteArray(uint8_t builtin);
+lean_object* initialize_Init_Data_ByteArray_Basic(uint8_t builtin);
 static bool _G_initialized = false;
 LEAN_EXPORT lean_object* initialize_Std_Http_Internal_ChunkedBuffer(uint8_t builtin) {
 lean_object * res;
@@ -643,7 +643,7 @@ lean_dec_ref(res);
 res = initialize_Init_Data_String_Basic(builtin);
 if (lean_io_result_is_error(res)) return res;
 lean_dec_ref(res);
-res = initialize_Init_Data_ByteArray(builtin);
+res = initialize_Init_Data_ByteArray_Basic(builtin);
 if (lean_io_result_is_error(res)) return res;
 lean_dec_ref(res);
 res = runtime_initialize_Std_Http_Internal_ChunkedBuffer(builtin);
