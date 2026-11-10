@@ -124,6 +124,8 @@ private def pollNextEvent
         selectables := selectables.push (.case (← Selector.sleep (timeout - (← Timestamp.now)).toMilliseconds) (fun _ => pure .timeout))
       else
         selectables := selectables.push (.case (← Selector.sleep sources.timeout) (fun _ => pure .timeout))
+    else
+      selectables := selectables.push (.case (← Selector.sleep sources.timeout) (fun _ => pure .close))
 
   if let some responseBody := sources.responseBody then
     selectables := selectables.push (.case (Body.recvSelector responseBody) (Recv.responseBody · |> pure))
@@ -173,8 +175,8 @@ and the response does not already include one.
 -/
 private def prepareResponseHead (config : Config) (head : Response.Head) : Async Response.Head := do
   if config.generateDate ∧ ¬head.headers.contains Header.Name.date then
-    let now ← Std.Time.DateTime.nowAt "UTC"
-    return { head with headers := head.headers.insert Header.Name.date (Header.Value.ofString! now.toRFC822String) }
+    let now := DateTime.ofTimestamp (← Timestamp.now) TimeZone.ZoneRules.UTC
+    return { head with headers := head.headers.insert Header.Name.date (Header.Value.ofString! now.toHTTPDateString) }
   else
     return head
 

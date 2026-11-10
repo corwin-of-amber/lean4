@@ -43,11 +43,11 @@
         },
         "lean": {
             ".": [
-                "LEAN_REPO=https://github.com/corwin-of-amber/lean4.git",
-                "LEAN_BRANCH=crazy-4.34.0",
+                "LEAN_REPO=${LEAN_REPO:-https://github.com/corwin-of-amber/lean4.git}",
+                "LEAN_BRANCH=${LEAN_BRANCH:-crazy-4.34.0}",
                 "WASI_SDK=/opt/wasi-sdk-33",
                 "WASIX_LIBC=/opt/wasix-libc-2026/exnref-ehpic",
-                "J=80",
+                "J=${J:-2}",
                 "mkdir -p lean4", "cd lean4"
             ],
             "get": [
@@ -55,12 +55,12 @@
             ],
             "build": {
                 "native": [
-                    "cmake --preset release",
+                    "cmake --preset release -DLEAN_SPECIAL_VERSION_DESC=$(python3 crazy/configure.py --special-version)",
                     "make -C build/release -j$J"
                 ],
                 "wasm": [
                     "cd crazy", "npm i", "cd ..",
-                    "wasi-kit make -f crazy.makefile DLSYM=dyn -j$J"
+                    "WASI_KIT=native=false wasi-kit make -f crazy.makefile BACKEND=wasm DLSYM=dyn -j$J"
                 ],
                 "wasm-lib": [
                     "make -f crazy.makefile lib-init-wasm",

@@ -7,6 +7,7 @@ Authors: Marc Huisinga, Wojciech Nawrocki
 module
 
 prelude
+import Init.System.Platform
 
 public import Lean.Data.FuzzyMatching
 public import Lean.Server.Requests
@@ -843,8 +844,8 @@ section ServerM
       toStdioConfig := workerCfg
       cmd           := st.workerPath.toString
       args          := #["--worker"] ++ st.args.toArray ++ #[m.uri]
-      -- open session for `kill` above
-      setsid        := true
+      -- Wasm targets lack process sessions; `kill` must address the worker itself there.
+      setsid        := !System.Platform.isEmscripten
     }
     let exitCode ← Std.Mutex.new none
     let initialDependencyBuildMode := m.dependencyBuildMode

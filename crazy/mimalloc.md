@@ -2,43 +2,36 @@
 Copyright (c) 2026 Emilio Jesus Gallego Arias. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -->
-# Optional mimalloc support
+# WASIX allocator selection
 
-After the native bootstrap, build Lean and Lake with Lean's existing mimalloc
-API path:
-
-```sh
-wasi-kit make -f crazy.makefile DLSYM=dyn MIMALLOC=1 -j2
-```
-
-The default remains `MIMALLOC=0 OPT=Oz`. Use `OPT=O3` to compare both allocator
-modes at that optimization level. Objects and archives have separate paths for
-each combination; switching modes relinks the shared `bin/lean` and `bin/lake`.
-Set `MIMALLOC_DIR` to use a different source checkout, and use a fresh object
-directory when changing allocator versions.
-
-The build uses the mimalloc source fetched by the native bootstrap at
-`build/release/mimalloc/src/mimalloc`. It copies the public header into the
-variant's include directory and defines `LEAN_MIMALLOC` for all Lean objects.
-This mode also selects Lean's mimalloc STL allocator and small-object handling.
-
-The unity source is compiled as C++, with pthread locks and local TLS. Libc
-retains its allocator: defining `MI_MALLOC_OVERRIDE` would call mimalloc from
-WASIX's `__wasi_init_tp` before thread-local storage is initialized.
-
-Run the build-selection regression checks with:
+The default is `MIMALLOC=1 OPT=Oz`. Set `MIMALLOC=0` for a libc comparison or
+`OPT=O3` for a different optimization level:
 
 ```sh
-python3 tests/wasm/test_crazy_build.py
+WASI_KIT=native=false wasi-kit make -f crazy.makefile BACKEND=wasm OPT=O3 MIMALLOC=1 -j2
 ```
 
-Run the allocator API and cross-thread-free probe under Wasmer with:
+Object and archive names identify backend, bootstrap stage, optimization,
+symbol lookup and allocator mode. Changing modes does not reuse incompatible
+objects. Shared executable paths are relinked when selecting another mode.
+
+Mimalloc comes from the native bootstrap at
+`build/release/mimalloc/src/mimalloc`, or `MIMALLOC_DIR` when overridden. Its
+unity source is compiled as C with pthread locks and local TLS; Lean uses the
+header shim in `crazy/include/lean/mimalloc.h`. Libc retains its own allocator:
+`MI_MALLOC_OVERRIDE` would reach mimalloc before WASIX thread-local startup.
+
+The allocator probe links the same allocator object as Lean and Lake:
 
 ```sh
-wasi-kit make -f crazy.makefile DLSYM=dyn MIMALLOC=1 test-mimalloc -j2
+WASI_KIT=native=false wasi-kit make -f crazy.makefile BACKEND=wasm MIMALLOC=1 test-mimalloc
 ```
 
-Its source is `tests/wasm/mimalloc.c`.
+`tests/wasm/test_crazy_build.py` checks mode selection and incremental reuse;
+`tests/wasm/mimalloc.c` checks allocation, alignment and cross-thread frees.
+
+The measurements below are historical 4.34 observations, not measurements of
+the 4.36 compiler or the current allocator implementation.
 
 ## RawLemmas profiling observation
 

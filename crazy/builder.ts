@@ -1,7 +1,10 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { shrinkwrapManifest } from './manifest.ts';
 import { spawn, SpawnOptions } from 'child_process';
 import { Command } from 'commander';
+import { pathToFileURL } from 'node:url';
+const platform = fs.readJsonSync(new URL('./platform.json', import.meta.url));
 
 
 async function copyDirSkippingLake(src: string, dest: string) {
@@ -17,7 +20,7 @@ async function translateConfigs(dir: string) {
         (await fs.readdir(dir, {recursive: true, encoding: 'utf-8'}))
         .filter(fn => path.basename(fn) == 'lakefile.lean');
 
-    const lake = path.resolve("bin/lake");
+    const lake = path.resolve("build/release/stage1/bin/lake");
 
     for (let fn of lakefiles) {
         let subdir = path.dirname(path.resolve(dir, fn));
@@ -33,61 +36,52 @@ async function shrinkwrap(dir: string, toml = false) {
 
     let rootPkgDir = '.lake/packages';
 
-    let toPathType = (pkgDir: string, pkg: any) =>
-        pkg.type === 'path' ? pkg : {
-            type: 'path',
-            scope: pkg.scope,
-            name: pkg.name,
-            manifestFile: pkg.manifestFile,
-            inherited: pkg.inherited,
-            dir: path.join(pkgDir, pkg.name, pkg.subDir ?? ''),
-            configFile: pkg.configFile
-        };
-
-    let checkPath = (fp: string, pkg: any) => {
-        if (pkg.dir && !isDir(path.join(path.dirname(fp), pkg.dir)))
-            console.warn(`(in ${fp}) package directory '${pkg.dir}' is missing`);
-        return pkg;
-    }
-
-    let withToml = (pkg: any) => ({...pkg, configFile: 'lakefile.toml'});
-
     for (let fn of manifests) {
         let fp = path.join(dir, fn),
             manifest = JSON.parse(fs.readFileSync(fp, {encoding: 'utf-8'})),
             pkgDir = path.relative(path.dirname(fn), rootPkgDir);
 
         if (manifest.packages) {
-            manifest.packages = manifest.packages.map((pkg: any) =>
-                checkPath(fp, toPathType(pkgDir, toml ? withToml(pkg) : pkg)));
+            manifest = shrinkwrapManifest(manifest, pkgDir, toml);
+            for (const pkg of manifest.packages) {
+                if (pkg.dir && !isDir(path.resolve(path.dirname(fp), pkg.dir)))
+                    throw new Error(`Missing dependency directory: ${pkg.dir} in ${fp}`);
+            }
             fs.writeFileSync(fp, JSON.stringify(manifest, null, 1));
         }
     }
 }
 
-async function packBuiltArtifacts(dir: string) {
+export async function packBuiltArtifacts(dir: string, output = 'bob.tar') {
     let buildDirs =
         (await fs.readdir(dir, {recursive: true, encoding: 'utf-8'}))
         .filter(fn => fn.endsWith('/build/lib/lean'));
 
-    let stagingDir = '/tmp/bob-staging', exts = ['.olean', '.ir', '.ir.sig'],
-        outFn = 'bob.tar';
-    fs.emptyDirSync(stagingDir);
-    fs.mkdirSync(stagingDir, {recursive: true});
-
-    // Copy files to `stagingDir`
-    for (let d of buildDirs) {
-        console.log(d, '-->', stagingDir);
-        await fs.copy(path.join(dir, d), stagingDir, {
-            filter: src => isDir(src) || exts.some(s => src.endsWith(s))
-        });
+    const outputPath = path.resolve(output);
+    await fs.ensureDir(path.dirname(outputPath));
+    const stagingDir = await fs.mkdtemp(path.join(path.dirname(outputPath), '.bob-'));
+    const extensions = ['.olean', '.olean.server', '.olean.private', '.ir', '.ir.sig'];
+    let artifactCount = 0;
+    try {
+        for (const directory of buildDirs) {
+            await fs.copy(path.join(dir, directory), stagingDir, {
+                filter: source => {
+                    if (isDir(source)) return true;
+                    if (!extensions.some(extension => source.endsWith(extension))) return false;
+                    artifactCount++;
+                    return true;
+                }
+            });
+        }
+        const files = await fs.readdir(stagingDir);
+        if (artifactCount === 0) throw new Error('No Lean artifacts to package');
+        await runCommand('tar', ['cf', path.join(stagingDir, 'archive.tar'), '-C', stagingDir, ...files]);
+        await fs.rename(path.join(stagingDir, 'archive.tar'), outputPath);
+        return outputPath;
+    } finally {
+        await fs.remove(stagingDir);
     }
 
-    let files = fs.readdirSync(stagingDir); /* this is to avoid leading `./` */
-    if (files.length > 0)
-        await runCommand('tar', ['cf', outFn, '-C', stagingDir, ...files]);
-
-    fs.rm(stagingDir, {recursive: true}); // async
 }
 
 function isDir(d: string) {
@@ -99,9 +93,9 @@ function isDir(d: string) {
 
 const WASMER = {
     volume: 'build-wasmer-fs',
-    mounts: ['usr', 'home', 'etc', 'dev'],
-    flags: ['--stack-size=4000000'],
-    env: {LEAN_NUM_THREADS: 2}
+    mounts: ['usr', 'home', 'etc'],
+    flags: ['--stack-size=' + (process.env.WASMER_STACK_SIZE || platform.wasmerStackSize)],
+    env: {LEAN_NUM_THREADS: process.env.LEAN_NUM_THREADS || process.env.J || '2'}
 }
 
 async function runCommand(cmd: string, args: string[], options: SpawnOptions = {}) {
@@ -109,7 +103,10 @@ async function runCommand(cmd: string, args: string[], options: SpawnOptions = {
     let p = spawn(cmd, args, {stdio: 'inherit', ...options});
 
     return await new Promise((resolve, reject) => {
-        p.on('exit', resolve);
+        p.on('exit', (code, signal) => {
+            if (code === 0) resolve(code);
+            else reject(new Error(`${cmd} failed (${signal ?? code})`));
+        });
         p.on('error', reject)
     })
 }
@@ -162,9 +159,12 @@ async function main() {
 
     await shrinkwrap(buildvol, o.forceToml);
 
-    await runWasmer(builddir, 'bin/lake.wasm', ['build', target+':leanArts'])
+    await runWasmer(builddir, 'bin/lake.wasm', [
+        '--no-ansi', 'build', '--no-cache', '--packages=lake-manifest.json', target+':leanArts'
+    ])
 
     await packBuiltArtifacts(buildvol);
 }
 
-main();
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url)
+    main().catch(error => { console.error(error); process.exitCode = 1; });

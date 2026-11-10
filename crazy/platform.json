@@ -1,0 +1,6 @@
+{
+  "release": "4.36.0-rc2",
+  "upstreamCommit": "b35cb10cf2ced51a2fd1880cfdbf75c71ab7a35a",
+  "target": "wasm32-wasi-sdk33",
+  "wasmerStackSize": 16000000
+}

@@ -256,8 +256,11 @@ static int lean_crt_to_uv_err(int err) {
 static obj_res decode_uv_error_impl(int errnum, int posix_errnum, b_lean_obj_arg fname) {
     object * details = mk_string(uv_strerror(errnum));
     switch (errnum) {
+    /* `interrupted` and `noFileOrDirectory` require a file name; callers without one get "". */
     case UV_EINTR:
-        lean_assert(fname != nullptr);
+        if (fname == nullptr) {
+            return lean_mk_io_error_interrupted(mk_string(""), posix_errnum, details);
+        }
         inc_ref(fname);
         return lean_mk_io_error_interrupted(fname, posix_errnum, details);
     /* LibUV does not map EDOM and ENOSTR as of version 1.52.1 */
@@ -274,7 +277,9 @@ static obj_res decode_uv_error_impl(int errnum, int posix_errnum, b_lean_obj_arg
             return lean_mk_io_error_invalid_argument_file(fname, posix_errnum, details);
         }
     case UV_ENOENT:
-        lean_assert(fname != nullptr);
+        if (fname == nullptr) {
+            return lean_mk_io_error_no_file_or_directory(mk_string(""), posix_errnum, details);
+        }
         inc_ref(fname);
         return lean_mk_io_error_no_file_or_directory(fname, posix_errnum, details);
     case UV_EACCES: case UV_EROFS: case UV_ECONNABORTED: case UV_EFBIG:
@@ -548,12 +553,6 @@ extern "C" LEAN_EXPORT uint8_t lean_io_prim_handle_is_tty(b_obj_arg h) {
     // We ignore errors for consistency with Windows.
     return isatty(fileno(fp));
 #endif
-}
-
-/* Handle.isEof : (@& Handle) → BaseIO Bool */
-extern "C" LEAN_EXPORT uint8_t lean_io_prim_handle_is_eof(b_obj_arg h) {
-    FILE * fp = io_get_handle(h);
-    return std::feof(fp) != 0;
 }
 
 /* Handle.flush : (@& Handle) → IO Unit */
@@ -1265,7 +1264,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile(lean_object * /* w */) {
     if (ret < 0) {
         return io_result_mk_error(decode_uv_error(ret, nullptr));
     } else if (base_len == 0) {
-        return lean_io_result_mk_error(decode_uv_error(UV_ENOENT, mk_string("")));
+        return lean_io_result_mk_error(decode_uv_error(UV_ENOENT, nullptr));
     }
 
 #if defined(LEAN_WINDOWS)
@@ -1311,7 +1310,7 @@ extern "C" LEAN_EXPORT obj_res lean_io_create_tempdir(lean_object * /* w */) {
     if (ret < 0) {
         return io_result_mk_error(decode_uv_error(ret, nullptr));
     } else if (base_len == 0) {
-        return lean_io_result_mk_error(decode_uv_error(UV_ENOENT, mk_string("")));
+        return lean_io_result_mk_error(decode_uv_error(UV_ENOENT, nullptr));
     }
 
 #if defined(LEAN_WINDOWS)
@@ -1468,10 +1467,8 @@ extern "C" LEAN_EXPORT obj_res lean_st_ref_get(b_obj_arg ref) {
             if (val != nullptr) {
                 inc(val);
                 object * tmp = val_addr->exchange(val);
-                if (tmp != nullptr) {
-                    /* this may happen if another thread wrote `ref` */
-                    dec(tmp);
-                }
+                lean_assert(tmp == nullptr);
+                (void)tmp;
                 return val;
             }
         }
@@ -1501,7 +1498,7 @@ extern "C" LEAN_EXPORT obj_res lean_st_ref_take(b_obj_arg ref) {
 
 static_assert(sizeof(atomic<unsigned short>) == sizeof(unsigned short), "`atomic<unsigned short>` and `unsigned short` must have the same size"); // NOLINT
 
-extern "C" LEAN_EXPORT obj_res lean_st_ref_set(b_obj_arg ref, obj_arg a) {
+extern "C" LEAN_EXPORT obj_res lean_st_ref_put(b_obj_arg ref, obj_arg a) {
     if (ref_maybe_mt(ref)) {
         /* We must mark `a` as multi-threaded if `ref` is marked as multi-threaded.
            Reason: our runtime relies on the fact that a single-threaded object
@@ -1509,8 +1506,8 @@ extern "C" LEAN_EXPORT obj_res lean_st_ref_set(b_obj_arg ref, obj_arg a) {
         mark_mt(a);
         atomic<object *> * val_addr = mt_ref_val_addr(ref);
         object * old_a = val_addr->exchange(a);
-        if (old_a != nullptr)
-            dec(old_a);
+        lean_assert(old_a == nullptr);
+        (void)old_a;
         return box(0);
     } else {
         if (lean_to_ref(ref)->m_value != nullptr)
@@ -1526,8 +1523,8 @@ extern "C" LEAN_EXPORT obj_res lean_st_ref_swap(b_obj_arg ref, obj_arg a) {
         mark_mt(a);
         atomic<object *> * val_addr = mt_ref_val_addr(ref);
         while (true) {
-            object * old_a = val_addr->exchange(a);
-            if (old_a != nullptr)
+            object * old_a = val_addr->load();
+            if (old_a != nullptr && val_addr->compare_exchange_strong(old_a, a))
                 return old_a;
         }
     } else {

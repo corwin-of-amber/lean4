@@ -36,7 +36,7 @@ nativeLibDir = "lib/lean"
 
 # Additional options derived from the CMake configuration
 # For example, CI will set `-DwarningAsError=true` through this
-moreLeanArgs = ["-Dbackward.do.legacy=false", "-s4000", "-Dinterpreter.prefer_native=false"]
+moreLeanArgs = ["-j1", "-Dbackward.do.legacy=false", "-s4000", "-Dinterpreter.prefer_native=false"]
 
 # Uncomment to limit number of reported errors further in case of overwhelming cmdline output
 #weakLeanArgs = ["-DmaxErrors=1"]
@@ -51,6 +51,10 @@ name = "Std"
 
 [[lean_lib]]
 name = "Lean"
+
+[[lean_lib]]
+name = "LeanExport"
+globs = ["LeanExport.*"]
 
 [[lean_lib]]
 name = "Lake"
